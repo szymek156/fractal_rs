@@ -1,0 +1,11 @@
+[package]
+name = "fractal"
+version = "0.1.0"
+authors = ["Szymon Zimnowoda <szimnowoda@kymetacorp.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glium = "0.29.1"
+image = "0.23"
