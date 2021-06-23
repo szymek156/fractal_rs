@@ -1,11 +1,7 @@
-use std::io::Cursor;
-
-use glium::backend::Facade;
 use glium::index::NoIndices;
 use glium::{glutin, Surface, VertexBuffer};
-use glium::{glutin::event_loop::EventLoop, Display};
-use image::Rgba;
-use num_complex::Complex;
+use glium::{glutin::event_loop::EventLoop, Display, glutin::dpi::LogicalSize};
+use crate::fractal;
 #[derive(Copy, Clone)]
 struct Vertex {
     position: [f32; 2],
@@ -19,41 +15,11 @@ struct Plane {
 implement_vertex!(Vertex, position, tex_coords);
 
 fn get_texture(display: &Display) -> glium::texture::Texture2d {
-    // Oh lol:
-    // https://crates.io/crates/image
-    let imgx = 800;
-    let imgy = 800;
 
+    let fractal = fractal::mandelbrot();
+    let dimensions = fractal.dimensions();
 
-    let scalex = 3.0 / imgx as f32;
-    let scaley = 3.0 / imgy as f32;
-    
-    // Create a new ImgBuf with width: imgx and height: imgy
-    let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
-
-    // Iterate over the coordinates and pixels of the image
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (0.3 * x as f32) as u8;
-        let b = (0.3 * y as f32) as u8;
-        *pixel = image::Rgb([r, 0, b]);
-
-        let cx = y as f32 * scalex - 1.5;
-        let cy = x as f32 * scaley - 1.5;
-
-        let c = Complex::new(-0.4f32, 0.6f32);
-        let mut z = Complex::new(cx, cy);
-
-        let mut i = 0;
-        while i < 255 && z.norm() <= 2.0 {
-            z = z * z + c;
-            i += 1;
-        }
-
-        let image::Rgb(data) = *pixel;
-        *pixel = image::Rgb([data[0], i as u8, data[2]]);
-    }
-
-    let image = glium::texture::RawImage2d::from_raw_rgb(imgbuf.into_raw(), (imgx, imgy));
+    let image = glium::texture::RawImage2d::from_raw_rgb(fractal.into_raw(), dimensions);
 
     let texture = glium::texture::Texture2d::new(display, image).unwrap();
 
@@ -122,10 +88,10 @@ fn create_program(display: &Display) -> glium::Program {
 }
 
 pub fn run() {
-    let event_loop = glutin::event_loop::EventLoop::new();
+    let event_loop = EventLoop::new();
 
     let display = glium::Display::new(
-        glutin::window::WindowBuilder::new(),
+        glutin::window::WindowBuilder::new().with_inner_size(LogicalSize::new(800, 800)),
         glutin::ContextBuilder::new(),
         &event_loop,
     )
@@ -134,6 +100,10 @@ pub fn run() {
     let plane = create_plane(&display);
 
     let program = create_program(&display);
+
+
+    let mut fps_count = 0;
+    let mut fps_measure = std::time::Instant::now() + std::time::Duration::from_secs(1);
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -181,5 +151,15 @@ pub fn run() {
             )
             .unwrap();
         target.finish().unwrap();
+
+
+        if fps_measure < next_frame_time {
+            fps_measure = next_frame_time + std::time::Duration::from_secs(1);
+
+            println!("FPS {}", fps_count);
+            fps_count = 0;
+        } else {
+            fps_count += 1;
+        }
     });
 }
