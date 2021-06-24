@@ -1,7 +1,14 @@
+use crate::fractal::OutBuffer;
 use glium::index::NoIndices;
 use glium::{glutin, Surface, VertexBuffer};
-use glium::{glutin::event_loop::EventLoop, Display, glutin::dpi::LogicalSize};
-use crate::fractal;
+use glium::{glutin::dpi::LogicalSize, glutin::event_loop::EventLoop, Display};
+use image::GenericImage;
+use lazy_static::lazy_static;
+use std::sync::RwLock;
+
+use std::sync::mpsc::Receiver;
+use std::time::Duration;
+
 #[derive(Copy, Clone)]
 struct Vertex {
     position: [f32; 2],
@@ -14,12 +21,25 @@ struct Plane {
 }
 implement_vertex!(Vertex, position, tex_coords);
 
-fn get_texture(display: &Display) -> glium::texture::Texture2d {
+lazy_static!{
+    static ref FRACTAL: RwLock<OutBuffer> = RwLock::new(OutBuffer::default());
 
-    let fractal = fractal::mandelbrot();
-    let dimensions = fractal.dimensions();
+}
 
-    let image = glium::texture::RawImage2d::from_raw_rgb(fractal.into_raw(), dimensions);
+fn get_texture(display: &Display, receiver: &Receiver<OutBuffer>) -> glium::texture::Texture2d {
+
+    // TODO: ohh boi, try to make it pretier 
+    // TODO: maybe if there is no data, simply don't draw?
+    let fractal = receiver.recv_timeout(Duration::from_millis(1));
+    let mut back = FRACTAL.write().unwrap();
+
+    if fractal.is_ok() {
+        *back = fractal.unwrap();
+    }
+        
+    let dimensions = back.dimensions();
+
+    let image = glium::texture::RawImage2d::from_raw_rgb(back.clone().into_raw(), dimensions);
 
     let texture = glium::texture::Texture2d::new(display, image).unwrap();
 
@@ -87,7 +107,7 @@ fn create_program(display: &Display) -> glium::Program {
     program
 }
 
-pub fn run() {
+pub fn run(receiver: Receiver<OutBuffer>) {
     let event_loop = EventLoop::new();
 
     let display = glium::Display::new(
@@ -100,7 +120,6 @@ pub fn run() {
     let plane = create_plane(&display);
 
     let program = create_program(&display);
-
 
     let mut fps_count = 0;
     let mut fps_measure = std::time::Instant::now() + std::time::Duration::from_secs(1);
@@ -129,7 +148,7 @@ pub fn run() {
         let mut target = display.draw();
         target.clear_color(0.0, 0.0, 1.0, 1.0);
 
-        let texture = get_texture(&display);
+        let texture = get_texture(&display, &receiver);
 
         let uniforms = uniform! {
             matrix: [
@@ -151,7 +170,6 @@ pub fn run() {
             )
             .unwrap();
         target.finish().unwrap();
-
 
         if fps_measure < next_frame_time {
             fps_measure = next_frame_time + std::time::Duration::from_secs(1);

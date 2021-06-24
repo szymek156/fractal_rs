@@ -1,7 +1,10 @@
 use image::{ImageBuffer, Rgb};
 use num_complex::Complex;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::thread;
 
-type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
+pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
 
 pub fn simple_julia() -> OutBuffer {
     // Oh lol:
@@ -108,4 +111,15 @@ fn color_rainbow(iteration: u32, limit: u32) -> image::Rgb<u8> {
     }
 
     pixel
+}
+
+pub fn run_on_thread() -> Receiver<OutBuffer> {
+    let (sender, receiver) = channel();
+
+    thread::spawn(move || loop {
+        let image = mandelbrot();
+        sender.send(image).unwrap();
+    });
+
+    receiver
 }
