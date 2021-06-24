@@ -21,29 +21,22 @@ struct Plane {
 }
 implement_vertex!(Vertex, position, tex_coords);
 
-lazy_static!{
-    static ref FRACTAL: RwLock<OutBuffer> = RwLock::new(OutBuffer::default());
+fn get_texture(
+    display: &Display,
+    receiver: &Receiver<OutBuffer>,
+) -> Option<glium::texture::Texture2d> {
+    let fractal = match receiver.try_recv() {
+        Ok(buff) => buff,
+        Err(_) => return None,
+    };
 
-}
+    let dimensions = fractal.dimensions();
 
-fn get_texture(display: &Display, receiver: &Receiver<OutBuffer>) -> glium::texture::Texture2d {
-
-    // TODO: ohh boi, try to make it pretier 
-    // TODO: maybe if there is no data, simply don't draw?
-    let fractal = receiver.recv_timeout(Duration::from_millis(1));
-    let mut back = FRACTAL.write().unwrap();
-
-    if fractal.is_ok() {
-        *back = fractal.unwrap();
-    }
-        
-    let dimensions = back.dimensions();
-
-    let image = glium::texture::RawImage2d::from_raw_rgb(back.clone().into_raw(), dimensions);
+    let image = glium::texture::RawImage2d::from_raw_rgb(fractal.clone().into_raw(), dimensions);
 
     let texture = glium::texture::Texture2d::new(display, image).unwrap();
 
-    texture
+    Some(texture)
 }
 
 fn create_plane(display: &Display) -> Plane {
@@ -145,31 +138,31 @@ pub fn run(receiver: Receiver<OutBuffer>) {
             std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
         *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
 
-        let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 1.0, 1.0);
+        if let Some(texture) = get_texture(&display, &receiver) {
+            let mut target = display.draw();
+            target.clear_color(0.0, 0.0, 1.0, 1.0);
 
-        let texture = get_texture(&display, &receiver);
+            let uniforms = uniform! {
+                matrix: [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [ 0.0, 0.0, 0.0, 1.0f32],
+                ],
+                tex: &texture,
+            };
 
-        let uniforms = uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ 0.0, 0.0, 0.0, 1.0f32],
-            ],
-            tex: &texture,
-        };
-
-        target
-            .draw(
-                &plane.vertex_buffer,
-                &plane.indices,
-                &program,
-                &uniforms,
-                &Default::default(),
-            )
-            .unwrap();
-        target.finish().unwrap();
+            target
+                .draw(
+                    &plane.vertex_buffer,
+                    &plane.indices,
+                    &program,
+                    &uniforms,
+                    &Default::default(),
+                )
+                .unwrap();
+            target.finish().unwrap();
+        }
 
         if fps_measure < next_frame_time {
             fps_measure = next_frame_time + std::time::Duration::from_secs(1);

@@ -3,6 +3,7 @@ use num_complex::Complex;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::thread;
+use std::time::Instant;
 
 pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
 
@@ -117,7 +118,11 @@ pub fn run_on_thread() -> Receiver<OutBuffer> {
     let (sender, receiver) = channel();
 
     thread::spawn(move || loop {
+        let start = Instant::now();
         let image = mandelbrot();
+        
+        println!("Render took {}", start.elapsed().as_millis());
+
         sender.send(image).unwrap();
     });
 
