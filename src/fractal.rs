@@ -13,6 +13,7 @@ pub enum Command {
     ZoomIn,
     LessIterations,
     MoreIterations,
+    ChangeOrigin(f64, f64),
 }
 pub struct Pipe {
     pub img_rcv: Receiver<OutBuffer>,
@@ -36,6 +37,14 @@ impl Fractal {
             Command::ZoomIn => self.pinhole_step -= 0.1,
             Command::LessIterations => self.limit -= 200.max(self.limit - 200),
             Command::MoreIterations => self.limit += 200,
+            Command::ChangeOrigin(x, y) => {
+                let pinhole_center = self.pinhole_size / 2.0;
+
+                self.origin_x = self.origin_x + ((x / self.img_width as f64) * self.pinhole_size)
+                    - pinhole_center;
+                self.origin_y = self.origin_y + ((y / self.img_height as f64) * self.pinhole_size)
+                    - pinhole_center;
+            }
         }
     }
     pub fn simple_julia(&self) -> OutBuffer {
@@ -83,8 +92,8 @@ impl Fractal {
 
         for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
             let pinhole_center = self.pinhole_size / 2.0;
-            let y0 = self.origin_y + (y as f64 / imgy as f64) * self.pinhole_size - pinhole_center;
             let x0 = self.origin_x + (x as f64 / imgx as f64) * self.pinhole_size - pinhole_center;
+            let y0 = self.origin_y + (y as f64 / imgy as f64) * self.pinhole_size - pinhole_center;
 
             let mut x = 0.0;
             let mut y = 0.0;
@@ -125,7 +134,6 @@ impl Fractal {
         };
 
         thread::spawn(move || loop {
-            
             match cmd_rcv.try_recv() {
                 Ok(command) => {
                     println!("Got command!");
@@ -133,7 +141,7 @@ impl Fractal {
                 }
                 Err(_) => (),
             }
-            
+
             let start = Instant::now();
 
             let image = self.mandelbrot();

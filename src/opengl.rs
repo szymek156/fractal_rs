@@ -1,5 +1,6 @@
 use crate::fractal::{Command, OutBuffer, Pipe};
-use glium::glutin::event::{ElementState, VirtualKeyCode};
+use glium::glutin::dpi::PhysicalPosition;
+use glium::glutin::event::{ElementState, MouseButton, VirtualKeyCode};
 use glium::index::NoIndices;
 use glium::{glutin, Surface, VertexBuffer};
 use glium::{glutin::dpi::LogicalSize, glutin::event_loop::EventLoop, Display};
@@ -123,6 +124,8 @@ pub fn run(pipe: Pipe) {
     let mut fps_count = 0;
     let mut fps_measure = std::time::Instant::now() + std::time::Duration::from_secs(1);
 
+    let mut mouse_position = PhysicalPosition::new(0.0, 0.0);
+
     event_loop.run(move |event, _, control_flow| {
         match event {
             glutin::event::Event::WindowEvent { event, .. } => match event {
@@ -144,6 +147,31 @@ pub fn run(pipe: Pipe) {
                         }
                     }
                 }
+                glutin::event::WindowEvent::MouseInput {
+                    device_id: _,
+                    state,
+                    button,
+                    modifiers: _,
+                } => {
+                    if state == ElementState::Released {
+                        if button == MouseButton::Left {
+                            println!(
+                                "Mouse click! pos = {:?} {:?} {:?}",
+                                mouse_position, state, button
+                            );
+                            
+                            pipe.cmd_send.send(Command::ChangeOrigin(mouse_position.x, mouse_position.y));
+                        }
+                    }
+                }
+                glutin::event::WindowEvent::CursorMoved {
+                    device_id: _,
+                    position,
+                    modifiers: _,
+                } => {
+                    mouse_position = position;
+                }
+
                 _ => return,
             },
             glutin::event::Event::NewEvents(cause) => match cause {
