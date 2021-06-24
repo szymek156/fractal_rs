@@ -7,81 +7,108 @@ use std::time::Instant;
 
 pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
 
-pub fn simple_julia() -> OutBuffer {
-    // Oh lol:
-    // https://crates.io/crates/image
-    let imgx = 800;
-    let imgy = 800;
-
-    let scalex = 3.0 / imgx as f32;
-    let scaley = 3.0 / imgy as f32;
-
-    // Create a new ImgBuf with width: imgx and height: imgy
-    let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
-
-    // Iterate over the coordinates and pixels of the image
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let r = (0.3 * x as f32) as u8;
-        let b = (0.3 * y as f32) as u8;
-        *pixel = image::Rgb([r, 0, b]);
-
-        let cx = y as f32 * scalex - 1.5;
-        let cy = x as f32 * scaley - 1.5;
-
-        let c = Complex::new(-0.4f32, 0.6f32);
-        let mut z = Complex::new(cx, cy);
-
-        let mut i = 0;
-        while i < 255 && z.norm() <= 2.0 {
-            z = z * z + c;
-            i += 1;
-        }
-
-        let image::Rgb(data) = *pixel;
-        *pixel = image::Rgb([data[0], i as u8, data[2]]);
-    }
-
-    imgbuf
+pub struct Fractal {
+    pub img_width: u32,
+    pub img_height: u32,
+    pub origin_x: f64,
+    pub origin_y: f64,
+    pub pinhole_size: f64,
+    pub limit: u32,
 }
 
-pub fn mandelbrot() -> OutBuffer {
-    let imgx = 800;
-    let imgy = 800;
+impl Fractal {
+    pub fn simple_julia(&self) -> OutBuffer {
+        // Oh lol:
+        // https://crates.io/crates/image
+        let imgx = self.img_width;
+        let imgy = self.img_height;
 
-    let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
+        let scalex = self.pinhole_size / imgx as f64;
+        let scaley = self.pinhole_size / imgy as f64;
 
-    const LIMIT: u32 = 200;
+        // Create a new ImgBuf with width: imgx and height: imgy
+        let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
 
-    for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
-        let y0 = (y as f64 / imgy as f64) * 4.0 - 2.0;
-        let x0 = (x as f64 / imgx as f64) * 3.0 - 2.0;
+        // Iterate over the coordinates and pixels of the image
+        for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
+            let r = (0.3 * x as f64) as u8;
+            let b = (0.3 * y as f64) as u8;
+            *pixel = image::Rgb([r, 0, b]);
 
-        let mut x = 0.0;
-        let mut y = 0.0;
-        let mut iteration = 0;
+            let cx = y as f64 * scalex - 1.5;
+            let cy = x as f64 * scaley - 1.5;
 
-        let mut x2 = 0.0;
-        let mut y2 = 0.0;
-        let mut sum = 0.0;
+            let c = Complex::new(-0.4, 0.6);
+            let mut z = Complex::new(cx, cy);
 
-        while sum < 4.0 && iteration < LIMIT {
-            y = (x + x) * y + y0;
+            let mut i = 0;
+            while i < self.limit && z.norm() <= 2.0 {
+                z = z * z + c;
+                i += 1;
+            }
 
-            x = x2 - y2 + x0;
-
-            x2 = x * x;
-
-            y2 = y * y;
-
-            sum = x2 + y2;
-
-            iteration += 1;
+            let image::Rgb(data) = *pixel;
+            *pixel = image::Rgb([data[0], i as u8, data[2]]);
         }
 
-        *pixel = color_rainbow(iteration, LIMIT);
+        imgbuf
     }
 
-    imgbuf
+    pub fn mandelbrot(&self) -> OutBuffer {
+        let imgx = self.img_width;
+        let imgy = self.img_height;
+
+        let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
+
+        for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
+            let pinhole_center = self.pinhole_size / 2.0;
+            let y0 = self.origin_y + (y as f64 / imgy as f64) * self.pinhole_size - pinhole_center;
+            let x0 = self.origin_x + (x as f64 / imgx as f64) * self.pinhole_size - pinhole_center;
+
+            let mut x = 0.0;
+            let mut y = 0.0;
+            let mut iteration = 0;
+
+            let mut x2 = 0.0;
+            let mut y2 = 0.0;
+            let mut sum = 0.0;
+
+            while sum < 4.0 && iteration < self.limit {
+                y = (x + x) * y + y0;
+
+                x = x2 - y2 + x0;
+
+                x2 = x * x;
+
+                y2 = y * y;
+
+                sum = x2 + y2;
+
+                iteration += 1;
+            }
+
+            *pixel = color_rainbow(iteration, self.limit);
+        }
+
+        imgbuf
+    }
+
+    pub fn run_on_thread(mut self) -> Receiver<OutBuffer> {
+        let (sender, receiver) = channel();
+
+        thread::spawn(move || loop {
+            let start = Instant::now();
+            let image = self.mandelbrot();
+
+            println!("Render took {}", start.elapsed().as_millis());
+
+            sender.send(image).unwrap();
+
+            self.pinhole_size *= 0.8;
+        });
+
+        receiver
+    }
 }
 
 fn color_gray(iteration: u32, limit: u32) -> image::Rgb<u8> {
@@ -112,19 +139,4 @@ fn color_rainbow(iteration: u32, limit: u32) -> image::Rgb<u8> {
     }
 
     pixel
-}
-
-pub fn run_on_thread() -> Receiver<OutBuffer> {
-    let (sender, receiver) = channel();
-
-    thread::spawn(move || loop {
-        let start = Instant::now();
-        let image = mandelbrot();
-        
-        println!("Render took {}", start.elapsed().as_millis());
-
-        sender.send(image).unwrap();
-    });
-
-    receiver
 }
