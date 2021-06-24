@@ -2,10 +2,22 @@ use image::{ImageBuffer, Rgb};
 use num_complex::Complex;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Instant;
 
 pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
+
+pub enum Command {
+    ZoomOut,
+    ZoomIn,
+    LessIterations,
+    MoreIterations,
+}
+pub struct Pipe {
+    pub img_rcv: Receiver<OutBuffer>,
+    pub cmd_send: Sender<Command>,
+}
 
 pub struct Fractal {
     pub img_width: u32,
@@ -13,10 +25,19 @@ pub struct Fractal {
     pub origin_x: f64,
     pub origin_y: f64,
     pub pinhole_size: f64,
+    pub pinhole_step: f64,
     pub limit: u32,
 }
 
 impl Fractal {
+    fn handle_command(&mut self, command: Command) {
+        match command {
+            Command::ZoomOut => self.pinhole_step += 0.1,
+            Command::ZoomIn => self.pinhole_step -= 0.1,
+            Command::LessIterations => self.limit -= 200.max(self.limit - 200),
+            Command::MoreIterations => self.limit += 200,
+        }
+    }
     pub fn simple_julia(&self) -> OutBuffer {
         // Oh lol:
         // https://crates.io/crates/image
@@ -93,21 +114,38 @@ impl Fractal {
         imgbuf
     }
 
-    pub fn run_on_thread(mut self) -> Receiver<OutBuffer> {
-        let (sender, receiver) = channel();
+    pub fn run_on_thread(mut self) -> Pipe {
+        let (img_send, img_rcv) = channel();
+
+        let (cmd_send, cmd_rcv) = channel();
+
+        let pipe = Pipe {
+            cmd_send: cmd_send,
+            img_rcv: img_rcv,
+        };
 
         thread::spawn(move || loop {
+            
+            match cmd_rcv.try_recv() {
+                Ok(command) => {
+                    println!("Got command!");
+                    self.handle_command(command)
+                }
+                Err(_) => (),
+            }
+            
             let start = Instant::now();
+
             let image = self.mandelbrot();
 
             println!("Render took {}", start.elapsed().as_millis());
 
-            sender.send(image).unwrap();
+            img_send.send(image).unwrap();
 
-            self.pinhole_size *= 0.8;
+            self.pinhole_size *= self.pinhole_step;
         });
 
-        receiver
+        pipe
     }
 }
 

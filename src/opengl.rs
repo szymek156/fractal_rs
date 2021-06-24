@@ -1,13 +1,9 @@
-use crate::fractal::OutBuffer;
+use crate::fractal::{Command, OutBuffer, Pipe};
+use glium::glutin::event::{ElementState, VirtualKeyCode};
 use glium::index::NoIndices;
 use glium::{glutin, Surface, VertexBuffer};
 use glium::{glutin::dpi::LogicalSize, glutin::event_loop::EventLoop, Display};
-use image::GenericImage;
-use lazy_static::lazy_static;
-use std::sync::RwLock;
-
 use std::sync::mpsc::Receiver;
-use std::time::Duration;
 
 #[derive(Copy, Clone)]
 struct Vertex {
@@ -100,7 +96,17 @@ fn create_program(display: &Display) -> glium::Program {
     program
 }
 
-pub fn run(receiver: Receiver<OutBuffer>) {
+fn handle_keyboard(key: VirtualKeyCode) -> Option<Command> {
+    match key {
+        VirtualKeyCode::LBracket => Some(Command::ZoomOut),
+        VirtualKeyCode::RBracket => Some(Command::ZoomIn),
+        VirtualKeyCode::Minus => Some(Command::LessIterations),
+        VirtualKeyCode::Equals => Some(Command::MoreIterations),
+        _ => None,
+    }
+}
+
+pub fn run(pipe: Pipe) {
     let event_loop = EventLoop::new();
 
     let display = glium::Display::new(
@@ -124,6 +130,20 @@ pub fn run(receiver: Receiver<OutBuffer>) {
                     *control_flow = glutin::event_loop::ControlFlow::Exit;
                     return;
                 }
+                glutin::event::WindowEvent::KeyboardInput {
+                    input,
+                    device_id: _,
+                    is_synthetic: _,
+                } => {
+                    if input.state == ElementState::Released {
+                        println!("Got keyboard event! {:?}", input);
+                        if let Some(key) = input.virtual_keycode {
+                            if let Some(cmd) = handle_keyboard(key) {
+                                pipe.cmd_send.send(cmd).unwrap();
+                            }
+                        }
+                    }
+                }
                 _ => return,
             },
             glutin::event::Event::NewEvents(cause) => match cause {
@@ -138,7 +158,7 @@ pub fn run(receiver: Receiver<OutBuffer>) {
             std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
         *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
 
-        if let Some(texture) = get_texture(&display, &receiver) {
+        if let Some(texture) = get_texture(&display, &pipe.img_rcv) {
             let mut target = display.draw();
             target.clear_color(0.0, 0.0, 1.0, 1.0);
 
