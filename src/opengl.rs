@@ -103,6 +103,16 @@ fn handle_keyboard(key: VirtualKeyCode) -> Option<Command> {
         VirtualKeyCode::RBracket => Some(Command::ZoomIn),
         VirtualKeyCode::Minus => Some(Command::LessIterations),
         VirtualKeyCode::Equals => Some(Command::MoreIterations),
+        VirtualKeyCode::Key0 => Some(Command::SetPOI(0)),
+        VirtualKeyCode::Key1 => Some(Command::SetPOI(1)),
+        VirtualKeyCode::Key2 => Some(Command::SetPOI(2)),
+        VirtualKeyCode::Key3 => Some(Command::SetPOI(3)),
+        VirtualKeyCode::Key4 => Some(Command::SetPOI(4)),
+        VirtualKeyCode::Key5 => Some(Command::SetPOI(5)),
+        VirtualKeyCode::Key6 => Some(Command::SetPOI(6)),
+        VirtualKeyCode::Key7 => Some(Command::SetPOI(7)),
+        VirtualKeyCode::Key8 => Some(Command::SetPOI(8)),
+        VirtualKeyCode::Space => Some(Command::GetState),
         _ => None,
     }
 }
@@ -139,7 +149,7 @@ pub fn run(pipe: Pipe) {
                     is_synthetic: _,
                 } => {
                     if input.state == ElementState::Released {
-                        println!("Got keyboard event! {:?}", input);
+                        // println!("Got keyboard event! {:?}", input);
                         if let Some(key) = input.virtual_keycode {
                             if let Some(cmd) = handle_keyboard(key) {
                                 pipe.cmd_send.send(cmd).unwrap();
@@ -155,11 +165,11 @@ pub fn run(pipe: Pipe) {
                 } => {
                     if state == ElementState::Released {
                         if button == MouseButton::Left {
-                            println!(
-                                "Mouse click! pos = {:?} {:?} {:?}",
-                                mouse_position, state, button
-                            );
-                            
+                            // println!(
+                            //     "Mouse click! pos = {:?} {:?} {:?}",
+                            //     mouse_position, state, button
+                            // );
+
                             pipe.cmd_send.send(Command::ChangeOrigin(mouse_position.x, mouse_position.y));
                         }
                     }
@@ -215,7 +225,7 @@ pub fn run(pipe: Pipe) {
         if fps_measure < next_frame_time {
             fps_measure = next_frame_time + std::time::Duration::from_secs(1);
 
-            println!("FPS {}", fps_count);
+            // println!("FPS {}", fps_count);
             fps_count = 0;
         } else {
             fps_count += 1;

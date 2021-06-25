@@ -7,19 +7,21 @@ use std::thread;
 use std::time::Instant;
 
 pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
-
+#[derive(Debug)]
 pub enum Command {
     ZoomOut,
     ZoomIn,
     LessIterations,
     MoreIterations,
     ChangeOrigin(f64, f64),
+    SetPOI(u32),
+    GetState,
 }
 pub struct Pipe {
     pub img_rcv: Receiver<OutBuffer>,
     pub cmd_send: Sender<Command>,
 }
-
+#[derive(Debug)]
 pub struct Fractal {
     pub img_width: u32,
     pub img_height: u32,
@@ -42,8 +44,56 @@ impl Fractal {
 
                 self.origin_x = self.origin_x + ((x / self.img_width as f64) * self.pinhole_size)
                     - pinhole_center;
-                self.origin_y = self.origin_y + ((y / self.img_height as f64) * self.pinhole_size)
-                    - pinhole_center;
+
+                // * -1.0 because Y values increase in down direction
+                self.origin_y = self.origin_y
+                    + (((y / self.img_height as f64) * self.pinhole_size) - pinhole_center) * -1.0;
+            }
+            Command::SetPOI(poi) => match poi {
+                0 => {
+                    self.origin_x = 0.0;
+                    self.origin_y = 0.0;
+                    self.pinhole_size = 4.0;
+                    self.pinhole_step = 1.0;
+                    self.limit = 20;
+                }
+                1 => {
+                    self.origin_x = -1.2583384664947936;
+                    self.origin_y = -0.032317669198187016
+                }
+                2 => {
+                    self.origin_x = -1.2487780999747029;
+                    self.origin_y = 0.071802096973029209;
+                }
+                3 => {
+                    self.origin_x = -1.2583385189936513;
+                    self.origin_y = -0.032317635405726151;
+                }
+                4 => {
+                    self.origin_x = -1.2583384664947908;
+                    self.origin_y = -0.032317669198180785;
+                }
+                5 => {
+                    self.origin_x = -1.4780998580724920;
+                    self.origin_y = -0.0029962325962097328;
+                }
+                6 => {
+                    self.origin_x = 0.3994999999000;
+                    self.origin_y = -0.195303;
+                }
+                7 => {
+                    self.origin_x = -1.768611136076306;
+                    self.origin_y = -0.001266863985331;
+                }
+                8 => {
+                    self.origin_x = -1.7686112281079116;
+                    self.origin_y = -0.0012668963162883458;
+                }
+                _ => (),
+            },
+            Command::GetState => {
+                println!("Current position: {:#?}", self);
+                println!("Zoom: {}", 4.0 / self.pinhole_size);
             }
         }
     }
@@ -136,7 +186,7 @@ impl Fractal {
         thread::spawn(move || loop {
             match cmd_rcv.try_recv() {
                 Ok(command) => {
-                    println!("Got command!");
+                    println!("Got command {:?}!", command);
                     self.handle_command(command)
                 }
                 Err(_) => (),
@@ -146,7 +196,7 @@ impl Fractal {
 
             let image = self.mandelbrot();
 
-            println!("Render took {}", start.elapsed().as_millis());
+            // println!("Render took {}", start.elapsed().as_millis());
 
             img_send.send(image).unwrap();
 
