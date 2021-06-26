@@ -5,6 +5,10 @@ use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Instant;
+extern crate crossbeam;
+extern crate num_cpus;
+use crossbeam::thread::scope;
+use std::sync::{Arc, Mutex};
 
 pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
 #[derive(Debug)]
@@ -21,7 +25,7 @@ pub struct Pipe {
     pub img_rcv: Receiver<OutBuffer>,
     pub cmd_send: Sender<Command>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Fractal {
     pub img_width: u32,
     pub img_height: u32,
@@ -89,6 +93,10 @@ impl Fractal {
                     self.origin_x = -1.7686112281079116;
                     self.origin_y = -0.0012668963162883458;
                 }
+                9 => {
+                    self.origin_x = -1.2568840461035797;
+                    self.origin_y = 0.3796264149862358;
+                }
                 _ => (),
             },
             Command::GetState => {
@@ -134,11 +142,9 @@ impl Fractal {
         imgbuf
     }
 
-    pub fn mandelbrot(&self) -> OutBuffer {
+    pub fn mandelbrot(&self, imgbuf: &mut ImageBuffer<Rgb<u8>, Vec<u8>>) {
         let imgx = self.img_width;
         let imgy = self.img_height;
-
-        let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
 
         for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
             let pinhole_center = self.pinhole_size / 2.0;
@@ -169,10 +175,144 @@ impl Fractal {
 
             *pixel = color_rainbow(iteration, self.limit);
         }
-
-        imgbuf
     }
 
+    // TODO: multithread manually
+    // TODO: multithread rayon
+    // TODO: cuda wrapper?
+    // TODO: SIMD
+
+    pub fn run_on_all_cpus(mut self) -> Pipe {
+        let (img_send, img_rcv) = channel();
+
+        let (cmd_send, cmd_rcv) = channel();
+
+        let pipe = Pipe {
+            cmd_send: cmd_send,
+            img_rcv: img_rcv,
+        };
+
+        // Approach one, in order to share common state, use Arc + Mutex, and do a self.clone()
+        // to avoid complaining that threads outlives self.
+        thread::spawn(move || {
+            let num_threads = num_cpus::get();
+
+            // Share a context among threads, in order to do so,
+            // Make a clone of self (to avoid complaining that closures inside spawn outlives self)
+            // Wrap it in a mutex (to have safe access to context)
+            // Wrap into Arc (to have possibility to share it among threads - mutex does not have clone!)
+            let mutex = Arc::new(Mutex::new(self.clone()));
+
+            // TODO: unsafe cell?
+            let img_buff = image::ImageBuffer::new(self.img_width, self.img_height);
+
+            // let sub_img = image::SubImage::new(img_buff, 0, 0, self.img_width, 200);
+
+
+            let mut threads = vec![];
+            for _ in 0..num_threads {
+                let mutex = mutex.clone();
+                let mut img_buff = img_buff.clone();
+                threads.push(thread::spawn(move || {
+                    let context = mutex.lock().unwrap().clone();
+                    context.mandelbrot(&mut img_buff);
+                }));
+            }
+
+            loop {
+                match cmd_rcv.recv() {
+                    Ok(command) => {
+                        let mut context = mutex.lock().unwrap();
+                        println!("Got command {:?}!", command);
+                        context.handle_command(command)
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        // Approach two, use crossbeam::scope
+        // thread::spawn(move || {
+        //     let num_threads = num_cpus::get();
+        //     let img_buff = image::ImageBuffer::new(self.img_width, self.img_height);
+
+        //     crossbeam::scope(|s| {
+        //         let mut threads = vec![];
+        //         for i in 0..num_threads {
+        //             threads.push(s.spawn(|_| {
+        //                 // let i = i;s
+        //                 self.mandelbrot(&mut img_buff.clone());
+
+        //                 println!("Thread ends");
+        //             }));
+        //         }
+        //     }).unwrap();
+
+        //     // All threads joined here already, so nope, crossbeam not for this scenario :(
+        //     loop {
+        //         println!("listening on threads");
+        //         match cmd_rcv.try_recv() {
+        //             Ok(command) => {
+        //                 println!("Got command {:?}!", command);
+        //                 self.handle_command(command)
+        //             }
+        //             Err(_) => break,
+        //         }
+        //     }
+        // });
+
+        pipe
+    }
+
+    //TODO:  self and mutex does not live long enough, figure out why
+    // pub fn run_on_all_cpus(mut self) -> Pipe {
+    //     let (img_send, img_rcv) = channel();
+
+    //     let (cmd_send, cmd_rcv) = channel();
+
+    //     let pipe = Pipe {
+    //         cmd_send: cmd_send,
+    //         img_rcv: img_rcv,
+    //     };
+
+    //     thread::spawn(move || {
+    //         let num_threads = num_cpus::get();
+
+    //         let mut image = image::ImageBuffer::new(self.img_width, self.img_height);
+
+    //         let mutex = Mutex::new(&mut self);
+    //         let threads: Vec<_> = (0..num_threads)
+    //             .map(|_| {
+    //                 thread::spawn(|| {
+    //                     let context = mutex.lock().unwrap().clone();
+    //                     context.mandelbrot(&mut image.clone());
+    //                 })
+    //             })
+    //             .collect();
+
+    //         loop {
+    //             match cmd_rcv.try_recv() {
+    //                 Ok(command) => {
+    //                     let mut context = mutex.lock().unwrap();
+    //                     println!("Got command {:?}!", command);
+    //                     context.handle_command(command)
+    //                 }
+    //                 Err(_) => break,
+    //             }
+    //         }
+
+    //         drop(threads);
+
+    //         // let _: Vec<_> = threads
+    //         //     .into_iter()
+    //         //     .map(|handle| {
+    //         //         handle.join().unwrap();
+    //         //     })
+    //         //     .collect();
+    //     });
+
+    //     pipe
+    // }
     pub fn run_on_thread(mut self) -> Pipe {
         let (img_send, img_rcv) = channel();
 
@@ -194,7 +334,8 @@ impl Fractal {
 
             let start = Instant::now();
 
-            let image = self.mandelbrot();
+            let mut image = image::ImageBuffer::new(self.img_width, self.img_height);
+            self.mandelbrot(&mut image);
 
             // println!("Render took {}", start.elapsed().as_millis());
 

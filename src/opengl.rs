@@ -112,6 +112,7 @@ fn handle_keyboard(key: VirtualKeyCode) -> Option<Command> {
         VirtualKeyCode::Key6 => Some(Command::SetPOI(6)),
         VirtualKeyCode::Key7 => Some(Command::SetPOI(7)),
         VirtualKeyCode::Key8 => Some(Command::SetPOI(8)),
+        VirtualKeyCode::Key9 => Some(Command::SetPOI(9)),
         VirtualKeyCode::Space => Some(Command::GetState),
         _ => None,
     }
