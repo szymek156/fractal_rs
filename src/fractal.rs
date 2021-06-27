@@ -232,8 +232,6 @@ impl Fractal {
             img_rcv: img_rcv,
         };
 
-        // Approach one, in order to share common state, use Arc + Mutex, and do a self.clone()
-        // to avoid complaining that threads outlives self.
         thread::spawn(move || {
             let num_threads = num_cpus::get();
 
@@ -249,47 +247,40 @@ impl Fractal {
             // // Wrap into Arc (to have possibility to share it among threads - mutex does not have clone!)
             let mutex = Arc::new(Mutex::new(self.clone()));
 
-            // // TODO: unsafe cell?
-            // let img_buff = image::ImageBuffer::new(self.img_width, self.img_height);
-
-            // // let sub_img = image::SubImage::new(img_buff, 0, 0, self.img_width, 200);
-
-            // let mut threads = vec![];
-            // for _ in 0..num_threads {
-            //     let mutex = mutex.clone();
-            //     let mut img_buff = img_buff.clone();
-            //     threads.push(thread::spawn(move || {
-            //         let context = mutex.lock().unwrap().clone();
-            //         context.mandelbrot(&mut img_buff);
-            //     }));
-            // }
-
+            // TODO: unsafe cell?
             loop {
                 match cmd_rcv.try_recv() {
                     Ok(command) => {
                         let mut context = mutex.lock().unwrap();
                         println!("Got command {:?}!", command);
-                        context.handle_command(command)
+                        context.handle_command(command);
                     }
-                    Err(_) => break,
+                    Err(_) => (),
                 }
 
                 let start = Instant::now();
                 crossbeam::scope(|s| {
                     for (id, chunk) in pixels.chunks_mut(chunk_size).enumerate() {
-                        let mut mutex = mutex.clone();
+                        // if id == 0 || id == 3 {
+                        //     continue;
+                        // }
+                        let mutex = mutex.clone();
 
-                        s.spawn(move |_|{
+                        s.spawn(move |_| {
                             let context;
                             {
                                 context = mutex.lock().unwrap().clone();
                             }
 
-                            context.mandelbrot_raw(id as u32, context.img_height / num_threads as u32, chunk);
+                            context.mandelbrot_raw(
+                                id as u32,
+                                context.img_height / num_threads as u32,
+                                chunk,
+                            );
                         });
                     }
-                }).unwrap();
-
+                })
+                .unwrap();
 
                 let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
                     pixels[(y * self.img_width + x) as usize]
@@ -298,7 +289,10 @@ impl Fractal {
                 println!("Render took {}", start.elapsed().as_millis());
                 img_send.send(image).unwrap();
 
-                self.pinhole_size *= self.pinhole_step;
+                {
+                    let mut context = mutex.lock().unwrap();
+                    context.pinhole_size *= context.pinhole_step;
+                }
             }
         });
 
@@ -329,7 +323,7 @@ impl Fractal {
             let mut image = image::ImageBuffer::new(self.img_width, self.img_height);
             self.mandelbrot(&mut image);
 
-            // println!("Render took {}", start.elapsed().as_millis());
+            println!("Render took {}", start.elapsed().as_millis());
 
             img_send.send(image).unwrap();
 
