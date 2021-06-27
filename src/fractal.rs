@@ -243,15 +243,6 @@ impl Fractal {
 
             let chunk_size = pixels_count / num_threads;
 
-            for (id, chunk) in pixels.chunks_mut(chunk_size).enumerate() {
-                self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
-            }
-
-            let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
-                pixels[(y * self.img_width + x) as usize]
-            });
-            img_send.send(image).unwrap();
-
             // // Share a context among threads, in order to do so,
             // // Make a clone of self (to avoid complaining that closures inside spawn outlives self)
             // // Wrap it in a mutex (to have safe access to context)
@@ -274,7 +265,7 @@ impl Fractal {
             // }
 
             loop {
-                match cmd_rcv.recv() {
+                match cmd_rcv.try_recv() {
                     Ok(command) => {
                         let mut context = mutex.lock().unwrap();
                         println!("Got command {:?}!", command);
@@ -282,6 +273,32 @@ impl Fractal {
                     }
                     Err(_) => break,
                 }
+
+                let start = Instant::now();
+                crossbeam::scope(|s| {
+                    for (id, chunk) in pixels.chunks_mut(chunk_size).enumerate() {
+                        let mut mutex = mutex.clone();
+
+                        s.spawn(move |_|{
+                            let context;
+                            {
+                                context = mutex.lock().unwrap().clone();
+                            }
+
+                            context.mandelbrot_raw(id as u32, context.img_height / num_threads as u32, chunk);
+                        });
+                    }
+                }).unwrap();
+
+
+                let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
+                    pixels[(y * self.img_width + x) as usize]
+                });
+
+                println!("Render took {}", start.elapsed().as_millis());
+                img_send.send(image).unwrap();
+
+                self.pinhole_size *= self.pinhole_step;
             }
         });
 
