@@ -1,7 +1,7 @@
 use image::{ImageBuffer, Rgb};
 use num_complex::Complex;
-use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread;
 use std::time::Instant;
 use std::{
@@ -228,7 +228,7 @@ impl Fractal {
     // TODO: SIMD
 
     pub fn run_on_all_cpus(mut self) -> Pipe {
-        let (img_send, img_rcv) = channel();
+        let (img_send, img_rcv) = sync_channel(1);
 
         let (cmd_send, cmd_rcv) = channel();
 
@@ -252,13 +252,14 @@ impl Fractal {
             // // Wrap into Arc (to have possibility to share it among threads - mutex does not have clone!)
             let mutex = Arc::new(Mutex::new(self.clone()));
 
-            let ready = vec![Arc::new(AtomicBool::new(false)); num_threads];
+            let mut ready = vec![];
 
             // TODO: unsafe cell?
             let mut threads = vec![];
             unsafe {
                 for (id, chunk) in (*pixels.get()).chunks_mut(chunk_size).enumerate() {
                     let mutex = mutex.clone();
+                    ready.push(Arc::new(AtomicBool::new(true)));
                     let ready = ready[id].clone();
 
                     threads.push(thread::spawn(move || {
@@ -298,8 +299,6 @@ impl Fractal {
 
                 let start = Instant::now();
 
-                let image;
-
                 loop {
                     let finished = ready.iter().filter(|r| r.load(Ordering::Acquire)).count();
 
@@ -308,16 +307,15 @@ impl Fractal {
                     }
                 }
 
-                let cpy;
+                let image;
                 unsafe {
-                    cpy = (*pixels.get()).clone();
+                    // cpy = (*pixels.get()).clone();
+                    image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
+                        (*pixels.get())[(y * self.img_width + x) as usize]
+                    });
                 }
 
-                image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
-                    cpy[(y * self.img_width + x) as usize]
-                });
-
-                println!("Render took {}", start.elapsed().as_millis());
+                // println!("Render took {}", start.elapsed().as_millis());
                 img_send.send(image).unwrap();
 
                 {
