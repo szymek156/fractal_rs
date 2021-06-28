@@ -171,7 +171,9 @@ pub fn run(pipe: Pipe) {
                             //     mouse_position, state, button
                             // );
 
-                            pipe.cmd_send.send(Command::ChangeOrigin(mouse_position.x, mouse_position.y));
+                            pipe.cmd_send
+                                .send(Command::ChangeOrigin(mouse_position.x, mouse_position.y))
+                                .unwrap();
                         }
                     }
                 }

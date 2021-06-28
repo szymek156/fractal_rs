@@ -20,6 +20,6 @@ fn main() {
         limit: 500
     };
 
-    let pipe = fractal.run_on_all_cpus();
+    let pipe = fractal.run_on_all_cpus_2();
     opengl::run(pipe);
 }

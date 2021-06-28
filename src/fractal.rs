@@ -11,6 +11,7 @@ use std::{
 extern crate crossbeam;
 extern crate num_cpus;
 use crossbeam::thread::scope;
+use rayon::prelude::*;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
@@ -223,11 +224,12 @@ impl Fractal {
         }
     }
     // TODO: multithread manually
-    // TODO: multithread rayon
     // TODO: cuda wrapper?
     // TODO: SIMD
 
-    pub fn run_on_all_cpus(mut self) -> Pipe {
+    /// Use:
+    /// Unsafe cell + waiting on threads - using atomic flags
+    pub fn run_on_all_cpus_1(self) -> Pipe {
         let (img_send, img_rcv) = sync_channel(1);
 
         let (cmd_send, cmd_rcv) = channel();
@@ -254,7 +256,6 @@ impl Fractal {
 
             let mut ready = vec![];
 
-            // TODO: unsafe cell?
             let mut threads = vec![];
             unsafe {
                 for (id, chunk) in (*pixels.get()).chunks_mut(chunk_size).enumerate() {
@@ -288,6 +289,7 @@ impl Fractal {
             }
 
             loop {
+                let start = Instant::now();
                 match cmd_rcv.try_recv() {
                     Ok(command) => {
                         let mut context = mutex.lock().unwrap();
@@ -297,25 +299,24 @@ impl Fractal {
                     Err(_) => (),
                 }
 
-                let start = Instant::now();
-
                 loop {
                     let finished = ready.iter().filter(|r| r.load(Ordering::Acquire)).count();
 
                     if finished == num_threads {
                         break;
                     }
+
+                    thread::yield_now();
                 }
 
                 let image;
                 unsafe {
-                    // cpy = (*pixels.get()).clone();
                     image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
                         (*pixels.get())[(y * self.img_width + x) as usize]
                     });
                 }
+                println!("render took {}", start.elapsed().as_millis());
 
-                // println!("Render took {}", start.elapsed().as_millis());
                 img_send.send(image).unwrap();
 
                 {
@@ -332,7 +333,60 @@ impl Fractal {
         pipe
     }
 
-    pub fn run_on_thread(mut self) -> Pipe {
+    /// Use rayon's par iterator
+    pub fn run_on_all_cpus_2(mut self) -> Pipe {
+        let (img_send, img_rcv) = sync_channel(1);
+
+        let (cmd_send, cmd_rcv) = channel();
+
+        let pipe = Pipe {
+            cmd_send: cmd_send,
+            img_rcv: img_rcv,
+        };
+
+        thread::spawn(move || {
+            let num_threads = num_cpus::get();
+
+            let pixels_count = (self.img_width * self.img_height) as usize;
+
+            let mut pixels = vec![image::Rgb::from([0u8, 0, 0]); pixels_count];
+
+            let chunk_size = pixels_count / num_threads;
+
+            loop {
+                let start = Instant::now();
+                match cmd_rcv.try_recv() {
+                    Ok(command) => {
+                        println!("Got command {:?}!", command);
+                        self.handle_command(command);
+                    }
+                    Err(_) => (),
+                }
+
+                let _: Vec<_> = pixels
+                    .par_chunks_mut(chunk_size)
+                    .enumerate()
+                    .map(|(id, chunk)| {
+                        self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
+                    })
+                    .collect();
+
+                let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
+                    pixels[(y * self.img_width + x) as usize]
+                });
+
+                println!("render took {}", start.elapsed().as_millis());
+
+                img_send.send(image).unwrap();
+
+                self.pinhole_size *= self.pinhole_step;
+            }
+        });
+
+        pipe
+    }
+
+    pub fn _run_on_thread(mut self) -> Pipe {
         let (img_send, img_rcv) = channel();
 
         let (cmd_send, cmd_rcv) = channel();
@@ -367,7 +421,7 @@ impl Fractal {
     }
 }
 
-fn color_gray(iteration: u32, limit: u32) -> image::Rgb<u8> {
+fn _color_gray(iteration: u32, limit: u32) -> image::Rgb<u8> {
     let lum = (iteration as f32 / limit as f32 * 255.0) as u8;
     image::Rgb([lum, lum, lum])
 }
