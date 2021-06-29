@@ -231,7 +231,10 @@ impl Fractal {
     // TODO: SIMD
     // https://www.officedaytime.com/simd512e/
     // https://nullprogram.com/blog/2015/07/10/
-    pub fn mandelbrot_simd(&self, pixels: &mut [Rgb<u8>]) {
+    // TODO: AVX512
+    // TODO: perturbation algo
+
+    pub fn mandelbrot_simd(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
         let imgx = self.img_width;
         let imgy = self.img_height;
 
@@ -240,8 +243,9 @@ impl Fractal {
 
         // SIMD part of code
         unsafe {
-            for pixel_y in 0..self.img_height {
-                let y0 = self.origin_y + (pixel_y as f64 / imgy as f64) * self.pinhole_size
+            for pixel_y in 0..height {
+                let y_offset = pixel_y + id * height;
+                let y0 = self.origin_y + (y_offset as f64 / imgy as f64) * self.pinhole_size
                     - pinhole_center;
 
                 let y0 = _mm256_set1_pd(y0);
@@ -336,7 +340,6 @@ impl Fractal {
                             break;
                         }
                     }
-
 
                     for i in 0..4 {
                         pixels[(pixel_y * self.img_height + pixel_x + i) as usize] =
@@ -454,7 +457,7 @@ impl Fractal {
     }
 
     /// Use rayon's par iterator
-    pub fn run_on_all_cpus_2(mut self) -> Pipe {
+    pub fn run_on_rayon(mut self) -> Pipe {
         let (img_send, img_rcv) = sync_channel(1);
 
         let (cmd_send, cmd_rcv) = channel();
@@ -488,6 +491,58 @@ impl Fractal {
                     .enumerate()
                     .map(|(id, chunk)| {
                         self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
+                    })
+                    .collect();
+
+                let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
+                    pixels[(y * self.img_width + x) as usize]
+                });
+
+                println!("render took {}", start.elapsed().as_millis());
+
+                img_send.send(image).unwrap();
+
+                self.pinhole_size *= self.pinhole_step;
+            }
+        });
+
+        pipe
+    }
+
+    pub fn run_on_rayon_simd(mut self) -> Pipe {
+        let (img_send, img_rcv) = sync_channel(1);
+
+        let (cmd_send, cmd_rcv) = channel();
+
+        let pipe = Pipe {
+            cmd_send: cmd_send,
+            img_rcv: img_rcv,
+        };
+
+        thread::spawn(move || {
+            let num_threads = num_cpus::get();
+
+            let pixels_count = (self.img_width * self.img_height) as usize;
+
+            let mut pixels = vec![image::Rgb::from([0u8, 0, 0]); pixels_count];
+
+            let chunk_size = pixels_count / num_threads;
+
+            loop {
+                let start = Instant::now();
+                match cmd_rcv.try_recv() {
+                    Ok(command) => {
+                        println!("Got command {:?}!", command);
+                        self.handle_command(command);
+                    }
+                    Err(_) => (),
+                }
+
+                let _: Vec<_> = pixels
+                    .par_chunks_mut(chunk_size)
+                    .enumerate()
+                    .map(|(id, chunk)| {
+                        self.mandelbrot_simd(id as u32, self.img_height / num_threads as u32, chunk);
                     })
                     .collect();
 
@@ -564,7 +619,7 @@ impl Fractal {
 
             let start = Instant::now();
 
-            self.mandelbrot_simd(&mut pixels);
+            self.mandelbrot_simd(0, self.img_height, &mut pixels);
 
             let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
                 pixels[(y * self.img_width + x) as usize]

@@ -22,10 +22,13 @@ fn main() {
 
     };
 
-    let pipe = fractal.run_on_thread_simd();
     // let pipe = fractal.run_on_thread();
-    // let pipe = fractal.run_on_all_cpus_2();
+    // let pipe = fractal.run_on_all_cpus_1();
+    // let pipe = fractal.run_on_rayon();
+    // let pipe = fractal.run_on_thread_simd();
+    let pipe = fractal.run_on_rayon_simd();
 
     opengl::run(pipe);
 }
+
 
