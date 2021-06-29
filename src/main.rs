@@ -11,15 +11,21 @@ mod opengl;
 
 fn main() {
     let fractal = Fractal {
-        img_height: 800,
-        img_width: 800,
-        origin_x: 0.0,
-        origin_y: 0.0,
-        pinhole_size: 4.0,
+        // For sake of simplicity, keep plane dimensions aligned to 64 bits
+        img_width: 608,
+        img_height: 608,
+        origin_x: -1.256884046123662,
+        origin_y: 0.3796264149022917,
+        pinhole_size: 0.00000000001004489644531639,
         pinhole_step: 1.0,
-        limit: 500
+        limit: 1200,
+
     };
 
-    let pipe = fractal.run_on_all_cpus_2();
+    let pipe = fractal.run_on_thread_simd();
+    // let pipe = fractal.run_on_thread();
+    // let pipe = fractal.run_on_all_cpus_2();
+
     opengl::run(pipe);
 }
+

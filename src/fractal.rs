@@ -1,9 +1,9 @@
 use image::{ImageBuffer, Rgb};
 use num_complex::Complex;
-use std::sync::mpsc::Sender;
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread;
 use std::time::Instant;
+use std::{mem, sync::mpsc::Sender};
 use std::{
     sync::{atomic::AtomicBool, mpsc::channel},
     time::Duration,
@@ -15,6 +15,9 @@ use rayon::prelude::*;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
+
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+use std::arch::x86_64::*;
 
 pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
 #[derive(Debug)]
@@ -226,6 +229,123 @@ impl Fractal {
     // TODO: multithread manually
     // TODO: cuda wrapper?
     // TODO: SIMD
+    // https://www.officedaytime.com/simd512e/
+    // https://nullprogram.com/blog/2015/07/10/
+    pub fn mandelbrot_simd(&self, pixels: &mut [Rgb<u8>]) {
+        let imgx = self.img_width;
+        let imgy = self.img_height;
+
+        let pinhole_center = self.pinhole_size / 2.0;
+        let x0_offset = self.origin_x - pinhole_center;
+
+        // SIMD part of code
+        unsafe {
+            for pixel_y in 0..self.img_height {
+                let y0 = self.origin_y + (pixel_y as f64 / imgy as f64) * self.pinhole_size
+                    - pinhole_center;
+
+                let y0 = _mm256_set1_pd(y0);
+
+                // Step by 4, on every iteration we take 4 floats at once
+                for pixel_x in (0..self.img_width).step_by(4) {
+                    let mut iteration = [0, 0, 0, 0];
+
+                    // let x0 = (pixel_x as f64 / imgx as f64) * self.pinhole_size + x0_offset;
+                    // + x0_offset
+                    let x0 = _mm256_add_pd(
+                        // * self.pinhole_size
+                        _mm256_mul_pd(
+                            // pixel_x as f64 / imgx as f64
+                            _mm256_div_pd(
+                                _mm256_set_pd(
+                                    (pixel_x + 3) as f64,
+                                    (pixel_x + 2) as f64,
+                                    (pixel_x + 1) as f64,
+                                    pixel_x as f64,
+                                ),
+                                _mm256_set1_pd(imgx as f64),
+                            ),
+                            _mm256_set1_pd(self.pinhole_size),
+                        ),
+                        _mm256_set1_pd(x0_offset),
+                    );
+
+                    // let mut x = 0.0;
+                    let mut x = _mm256_setzero_pd();
+                    // let mut y = 0.0;
+                    let mut y = _mm256_setzero_pd();
+                    // let mut x2 = 0.0;
+                    let mut x2 = _mm256_setzero_pd();
+                    // let mut y2 = 0.0;
+                    let mut y2 = _mm256_setzero_pd();
+                    // let mut sum = 0.0;
+                    let mut sum = _mm256_setzero_pd();
+
+                    // TODO: try to change to range loop, should be no difference
+                    let mut i = 0;
+                    while i < self.limit {
+                        i += 1;
+
+                        // y = (x + x) * y + y0;
+                        // + y0
+                        y = _mm256_add_pd(
+                            // * y
+                            _mm256_mul_pd(
+                                // x + x
+                                _mm256_add_pd(x, x),
+                                y,
+                            ),
+                            y0,
+                        );
+
+                        // x = x2 - y2 + x0;
+                        // + x0
+                        x = _mm256_add_pd(
+                            // x2 - y2
+                            _mm256_sub_pd(x2, y2),
+                            x0,
+                        );
+
+                        // TODO: this is ABS for complex numbers, maybe there is some instrict?
+
+                        // x2 = x * x;
+                        x2 = _mm256_mul_pd(x, x);
+
+                        // y2 = y * y;
+                        y2 = _mm256_mul_pd(y, y);
+
+                        // sum = x2 + y2;
+                        sum = _mm256_add_pd(x2, y2);
+
+                        // iteration += 1;
+                        // TODO: other way to unpack?
+                        let sum_unpacked: [f64; 4] = mem::transmute(sum);
+
+                        // TODO: this can be SIMD too!
+                        for i in 0..4usize {
+                            iteration[i] = iteration[i] + (sum_unpacked[i] < 4.0) as u32;
+                        }
+
+                        // TODO: some SIMD function?
+                        // sum < 4.0, _CMP_LE_OQ == Less-than-or-equal (ordered, non-signaling)
+                        // let res = _mm256_cmp_pd(sum, _mm256_set1_pd(4.0), _CMP_LE_OQ);
+                        // TODO: then collapse to one?
+
+                        // All points in the vector already escaped 4.0 circle - break the loop
+                        if sum_unpacked.iter().filter(|x| *x > &4.0).count() == 4 {
+                            break;
+                        }
+                    }
+
+
+                    for i in 0..4 {
+                        pixels[(pixel_y * self.img_height + pixel_x + i) as usize] =
+                            color_rainbow(iteration[i as usize], self.limit);
+                    }
+                }
+            } // unsafe
+        }
+    }
 
     /// Use:
     /// Unsafe cell + waiting on threads - using atomic flags
@@ -386,7 +506,7 @@ impl Fractal {
         pipe
     }
 
-    pub fn _run_on_thread(mut self) -> Pipe {
+    pub fn run_on_thread(mut self) -> Pipe {
         let (img_send, img_rcv) = channel();
 
         let (cmd_send, cmd_rcv) = channel();
@@ -409,6 +529,46 @@ impl Fractal {
 
             let mut image = image::ImageBuffer::new(self.img_width, self.img_height);
             self.mandelbrot(&mut image);
+
+            println!("Render took {}", start.elapsed().as_millis());
+
+            img_send.send(image).unwrap();
+
+            self.pinhole_size *= self.pinhole_step;
+        });
+
+        pipe
+    }
+
+    pub fn run_on_thread_simd(mut self) -> Pipe {
+        let (img_send, img_rcv) = channel();
+
+        let (cmd_send, cmd_rcv) = channel();
+
+        let pipe = Pipe {
+            cmd_send: cmd_send,
+            img_rcv: img_rcv,
+        };
+
+        thread::spawn(move || loop {
+            let pixels_count = (self.img_width * self.img_height) as usize;
+            let mut pixels = vec![image::Rgb::from([0u8, 0, 0]); pixels_count];
+
+            match cmd_rcv.try_recv() {
+                Ok(command) => {
+                    println!("Got command {:?}!", command);
+                    self.handle_command(command)
+                }
+                Err(_) => (),
+            }
+
+            let start = Instant::now();
+
+            self.mandelbrot_simd(&mut pixels);
+
+            let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
+                pixels[(y * self.img_width + x) as usize]
+            });
 
             println!("Render took {}", start.elapsed().as_millis());
 
