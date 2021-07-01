@@ -244,6 +244,9 @@ impl Fractal {
 
         // SIMD part of code
         unsafe {
+            // 4 doubles with bin representation of 0xff...
+            let ff_mask = _mm256_cmp_pd(_mm256_set1_pd(1.0), _mm256_set1_pd(4.0), _CMP_LE_OQ);
+
             for pixel_y in 0..height {
                 let y_offset = pixel_y + id * height;
                 let y0 = self.origin_y + (y_offset as f64 / imgy as f64) * self.pinhole_size
@@ -333,13 +336,16 @@ impl Fractal {
 
                         // TODO: some SIMD function?
                         // sum < 4.0, _CMP_LE_OQ == Less-than-or-equal (ordered, non-signaling)
-                        // let res = _mm256_cmp_pd(sum, _mm256_set1_pd(4.0), _CMP_LE_OQ);
-                        // TODO: then collapse to one?
+                        let mask = _mm256_cmp_pd(sum, _mm256_set1_pd(4.0), _CMP_LE_OQ);
+                        // Mask will contain 0xfff... if pred is true, 0x000... otherwise
 
-                        // All points in the vector already escaped 4.0 circle - break the loop
-                        if sum_unpacked.iter().filter(|x| *x > &4.0).count() == 4 {
+                        // If mask is all 0, all points in the vector escaped 4.0 circle, break the loop
+                        // TODO: there should be float representation of 0xfff...
+                        if _mm256_testz_pd(mask, ff_mask) == 1 {
                             break;
                         }
+
+                    
                     }
 
                     for i in 0..4 {
