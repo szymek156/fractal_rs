@@ -1,3 +1,4 @@
+#![feature(stdsimd)]
 use fractal::Fractal;
 
 #[macro_use]
