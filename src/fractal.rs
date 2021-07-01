@@ -50,7 +50,7 @@ impl Fractal {
         match command {
             Command::ZoomOut => self.pinhole_step += 0.1,
             Command::ZoomIn => self.pinhole_step -= 0.1,
-            Command::LessIterations => self.limit -= 200.max(self.limit - 200),
+            Command::LessIterations => self.limit -= if self.limit <= 200 { 0 } else {200},
             Command::MoreIterations => self.limit += 200,
             Command::ChangeOrigin(x, y) => {
                 let pinhole_center = self.pinhole_size / 2.0;
@@ -68,7 +68,7 @@ impl Fractal {
                     self.origin_y = 0.0;
                     self.pinhole_size = 4.0;
                     self.pinhole_step = 1.0;
-                    self.limit = 20;
+                    self.limit = 200;
                 }
                 1 => {
                     self.origin_x = -1.2583384664947936;
@@ -91,8 +91,8 @@ impl Fractal {
                     self.origin_y = -0.0029962325962097328;
                 }
                 6 => {
-                    self.origin_x = 0.3994999999000;
-                    self.origin_y = -0.195303;
+                    self.origin_x = -0.743643887037158704752191506114774;
+                    self.origin_y = 0.131825904205311970493132056385139;
                 }
                 7 => {
                     self.origin_x = -1.768611136076306;
@@ -233,6 +233,7 @@ impl Fractal {
     // https://nullprogram.com/blog/2015/07/10/
     // TODO: AVX512
     // TODO: perturbation algo
+    // http://math.ivanovo.ac.ru/dalgebra/Khashin/man2/Mandelbrot.pdf
 
     pub fn mandelbrot_simd(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
         let imgx = self.img_width;
