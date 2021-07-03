@@ -15,6 +15,7 @@ use rayon::prelude::*;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
+use crate::quadruple;
 
 #[cfg(all(
     target_arch = "x86_64",
@@ -229,18 +230,16 @@ impl Fractal {
             }
         }
     }
-    // TODO: multithread manually
     // TODO: cuda wrapper?
     // TODO: SIMD
     // https://www.officedaytime.com/simd512e/
     // https://nullprogram.com/blog/2015/07/10/
-    // TODO: AVX512
     // TODO: perturbation algo
     // http://math.ivanovo.ac.ru/dalgebra/Khashin/man2/Mandelbrot.pdf
 
     pub fn mandelbrot_simd_avx512(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
         if !is_x86_feature_detected!("avx512f") {
-            panic!("avx512f no supported on this platform :(");
+            panic!("avx512f not supported on this platform :(");
         }
         
         let imgx = self.img_width;
@@ -367,9 +366,9 @@ impl Fractal {
         }
     }
 
-    pub fn mandelbrot_simd(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
+    pub fn mandelbrot_simd_avx2(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
         if !is_x86_feature_detected!("avx2") {
-            panic!("AVX2 no supported on this platform :(");
+            panic!("AVX2 not supported on this platform :(");
         }
 
         let imgx = self.img_width;
@@ -427,11 +426,7 @@ impl Fractal {
                     // let mut sum = 0.0;
                     let mut sum = _mm256_setzero_pd();
 
-                    // TODO: try to change to range loop, should be no difference
-                    let mut i = 0;
-                    while i < self.limit {
-                        i += 1;
-
+                    for i in 0..self.limit {
                         // y = (x + x) * y + y0;
                         // + y0
                         y = _mm256_add_pd(
@@ -471,6 +466,10 @@ impl Fractal {
                         //iteration_test =
                         // _mm256_add_pd(_mm256_and_pd(mask, ff_mask), iteration_test);
                         // Returns NaN instead of 1.0 :\
+                        //
+                        // __m256 mask = _mm256_cmp_ps(mag2, threshold, _CMP_LT_OS);
+                        // mk = _mm256_add_ps(_mm256_and_ps(mask, one), mk);
+                        //
                         for i in 0..sum_unpacked.len() {
                             iteration[i] = iteration[i] + (sum_unpacked[i] < 4.0) as u32;
                         }
@@ -686,7 +685,7 @@ impl Fractal {
                     .par_chunks_mut(chunk_size)
                     .enumerate()
                     .map(|(id, chunk)| {
-                        self.mandelbrot_simd_avx512(
+                        self.mandelbrot_simd_avx2(
                             id as u32,
                             self.img_height / num_threads as u32,
                             chunk,
@@ -767,7 +766,7 @@ impl Fractal {
 
             let start = Instant::now();
 
-            self.mandelbrot_simd(0, self.img_height, &mut pixels);
+            self.mandelbrot_simd_avx2(0, self.img_height, &mut pixels);
 
             let image = image::ImageBuffer::from_fn(self.img_width, self.img_height, |x, y| {
                 pixels[(y * self.img_width + x) as usize]

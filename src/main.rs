@@ -7,6 +7,7 @@ extern crate glium;
 #[macro_use]
 extern crate lazy_static;
 
+mod quadruple;
 mod fractal;
 mod opengl;
 
