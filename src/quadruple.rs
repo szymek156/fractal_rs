@@ -1,64 +1,37 @@
 //! Quadruple (double the double) implementation
+//! Double single functions based on DSFUN90 package:
+//! http://crd.lbl.gov/~dhbailey/mpdist/index.html
+
+//! Other references
 //! float-float operators on graphics hardware:
 // http://hal.archives-ouvertes.fr/docs/00/06/33/56/PDF/float-float.pdf
 //! Extended-Precision Floating-Point Numbers forGPU Computation:
 //! http://andrewthall.org/papers/df64_qf128.pdf
 
+use std::cmp::Ordering;
 use std::ops::{Add, Mul, Sub};
 
 // For float p = 24, double p = 53 ((2 << 27) + 1).
 const SPLIT: f64 = ((2 << 27) + 1) as f64;
 
-#[derive(Debug, Default)]
+// clone + copy to be able to do: x + x etc.
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct Quad {
-    low: f64,
-    high: f64,
+    lo: f64,
+    hi: f64,
 }
 
 // Variable naming taken from publication, don't judge me!
 
 impl Quad {
-    pub fn new(low: f64, high: f64) -> Self {
-        Self { low, high }
-    }
-
-    fn add12(a: f64, b: f64) -> Self {
-        let s = a + b;
-
-        let v = s - a;
-
-        let r = (a - (s - v)) + (b - v);
-
-        Self::new(s, r)
-    }
-
-    fn mul12(a: f64, b: f64) -> Self {
-        let a_quad = Self::from(a);
-
-        let b_quad = Self::from(b);
-
-        let ab = a * b;
-
-        let err1 = ab - (a_quad.high * b_quad.high);
-
-        let err2 = err1 - (a_quad.low * b_quad.high);
-
-        let err3 = err2 - (a_quad.high * b_quad.low);
-
-        Self::new(ab, (a_quad.low * b_quad.low) - err3)
+    pub fn new(lo: f64, hi: f64) -> Self {
+        Self { lo, hi }
     }
 }
 
 impl From<f64> for Quad {
     fn from(a: f64) -> Self {
-        let c = SPLIT * a;
-        let aBig = c - a;
-
-        let high = c - aBig;
-
-        let low = a - high;
-
-        Self { high, low }
+        Self { hi: a, lo: 0.0 }
     }
 }
 
@@ -66,19 +39,36 @@ impl From<f64> for Quad {
 impl Add for Quad {
     type Output = Self;
 
-    // TODO: self, of &self?
     fn add(self, rhs: Self) -> Self {
-        let r = self.high + rhs.high;
+        // Compute dsa + dsb using Knuth's trick.
+        let t1 = self.hi + rhs.hi;
+        let mut e = t1 - self.hi;
+        let t2 = ((rhs.hi - e) + (self.hi - (t1 - e))) + self.lo + rhs.lo;
 
-        let mut s;
-        // TODO: try to get rid off this if
-        if self.high.abs() >= rhs.high.abs() {
-            s = self.high - r + rhs.high + rhs.low + self.low;
-        } else {
-            s = rhs.high - r + self.high + self.low + rhs.low;
-        }
+        // The result is t1 + t2, after normalization.
+        e = t1 + t2;
+        let c0 = e;
+        let c1 = t2 - (e - t1);
 
-        Self::add12(r, s)
+        Quad { lo: c1, hi: c0 }
+    }
+}
+
+impl Sub for Quad {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        // Compute dsa - dsb using Knuth's trick.
+        let t1 = self.hi - rhs.hi;
+        let mut e = t1 - self.hi;
+        let t2 = ((-rhs.hi - e) + (self.hi - (t1 - e))) + self.lo - rhs.lo;
+
+        // The result is t1 + t2, after normalization.
+        e = t1 + t2;
+        let c0 = e;
+        let c1 = t2 - (e - t1);
+
+        Quad { lo: c1, hi: c0 }
     }
 }
 
@@ -86,14 +76,49 @@ impl Mul for Quad {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
-    
-        // TODO: Error in publication, not sure how t3 should be used?
-        let abh = Self::mul12(self.high, rhs.high);
-        let t3 = (self.high * rhs.low) * (self.low * rhs.high) + abh.low;
+        // This splits dsa(1) and dsb(1) into high-order and low-order words.
+        let cona = self.hi * SPLIT;
+        let conb = rhs.hi * 8193.0;
+        let sa1 = cona - (cona - self.hi);
+        let sb1 = conb - (conb - rhs.hi);
+        let sa2 = self.hi - sa1;
+        let sb2 = rhs.hi - sb1;
 
-        Self::add12(abh.high, t3)
+        // Multilply a0 * b0 using Dekker's method.
+        let c11 = self.hi * rhs.hi;
+        let c21 = (((sa1 * sb1 - c11) + sa1 * sb2) + sa2 * sb1) + sa2 * sb2;
+
+        // Compute a0 * b1 + a1 * b0 (only high-order word is needed).
+        let c2 = self.hi * rhs.lo + self.lo * rhs.hi;
+
+        // Compute (c11, c21) + c2 using Knuth's trick, also adding low-order product.
+        let t1 = c11 + c2;
+        let mut e = t1 - c11;
+        let t2 = ((c2 - e) + (c11 - (t1 - e))) + c21 + self.lo * rhs.lo;
+
+        // The result is t1 + t2, after normalization.
+        e = t1 + t2;
+        let c0 = e;
+        let c1 = t2 - (e - t1);
+
+        return Quad { lo: c1, hi: c0 };
     }
 }
 
 // TODO: Partial ordering:
 // https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html
+
+impl PartialOrd for Quad {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // return (hi < q.hi) || (hi == q.hi && lo < q.lo);
+
+        if self.hi < other.hi || (self.hi == other.hi && self.lo < other.lo) {
+            return Some(Ordering::Less);
+        } else {
+            return Some(Ordering::Greater);
+        }
+
+        // For fractal we care only for < operator, others can be implemented later
+        todo!();
+    }
+}

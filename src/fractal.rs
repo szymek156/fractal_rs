@@ -10,12 +10,12 @@ use std::{
 };
 extern crate crossbeam;
 extern crate num_cpus;
+use crate::quadruple::{self, Quad};
 use crossbeam::thread::scope;
 use rayon::prelude::*;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
-use crate::quadruple;
 
 #[cfg(all(
     target_arch = "x86_64",
@@ -230,6 +230,55 @@ impl Fractal {
             }
         }
     }
+
+    pub fn mandelbrot_quad(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
+        let imgx = self.img_width;
+        let imgy = self.img_height;
+
+        let pinhole_center = Quad::from(self.pinhole_size / 2.0);
+        let pinhole_size = Quad::from(self.pinhole_size);
+
+        let origin_x = Quad::from(self.origin_x);
+        let origin_y = Quad::from(self.origin_y);
+
+        for pixel_y in 0..height {
+            let y_offset = pixel_y + id * height;
+
+            for pixel_x in 0..self.img_width {
+                // TODO: whole self struct has to keep quad value
+                let x0 = origin_x + Quad::from(pixel_x as f64 / imgx as f64) * pinhole_size
+                    - pinhole_center;
+                let y0 = origin_y + Quad::from(y_offset as f64 / imgy as f64) * pinhole_size
+                    - pinhole_center;
+
+                let mut x = Quad::default();
+                let mut y = Quad::default();
+                let mut iteration = 0;
+
+                let mut x2 = Quad::default();
+                let mut y2 = Quad::default();
+                let mut sum = Quad::default();
+
+                while sum < Quad::from(4.0) && iteration < self.limit {
+                    y = (x + x) * y + y0;
+
+                    x = x2 - y2 + x0;
+
+                    x2 = x * x;
+
+                    y2 = y * y;
+
+                    sum = x2 + y2;
+
+                    iteration += 1;
+                }
+
+                pixels[(pixel_y * self.img_height + pixel_x) as usize] =
+                    color_rainbow(iteration, self.limit);
+            }
+        }
+    }
+
     // TODO: cuda wrapper?
     // TODO: SIMD
     // https://www.officedaytime.com/simd512e/
@@ -241,7 +290,7 @@ impl Fractal {
         if !is_x86_feature_detected!("avx512f") {
             panic!("avx512f not supported on this platform :(");
         }
-        
+
         let imgx = self.img_width;
         let imgy = self.img_height;
 
@@ -633,7 +682,12 @@ impl Fractal {
                     .par_chunks_mut(chunk_size)
                     .enumerate()
                     .map(|(id, chunk)| {
-                        self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
+                        // self.mandelbrot_quad(
+                        //     id as u32,
+                        //     self.img_height / num_threads as u32,
+                        //     chunk,
+                        // );
+                        self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk)
                     })
                     .collect();
 

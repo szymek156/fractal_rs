@@ -6,8 +6,10 @@ This is a port to Rust of my implementation of rendering a Mandelbrot set writte
 - [x] multithreaded using Rayon
 - [x] avx2 version + Rayon
 - [x] avx512 (lack of CPU to test it, lol)
-- [ ] quadruple (double double)
+- [x] quadruple (double double) + Rayon
+- [ ] refactor, because it starts to be a mess
 - [ ] quadruple + avx2 + Rayon
+- [ ] use rust crate with arbitrary precision
 - [ ] cuda?
 - [ ] using new algorithm to calculate
     - https://math.stackexchange.com/questions/939270/perturbation-of-mandelbrot-set-fractal
