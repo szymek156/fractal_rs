@@ -1,5 +1,8 @@
 # fractal_rs
 This is a port to Rust of my implementation of rendering a Mandelbrot set written long long time ago in C++.
+# Running
+```cargo +nightly run --release```
+
 # Features
  
 - [x] simple version - one thread + double
