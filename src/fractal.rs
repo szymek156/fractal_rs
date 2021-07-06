@@ -295,19 +295,41 @@ impl Fractal {
         let origin_x = Float::with_val(BIT_PRECISION, self.origin_x);
         let origin_y = Float::with_val(BIT_PRECISION, self.origin_y);
 
+        let float_four = Float::with_val(BIT_PRECISION, 4.0);
         for pixel_y in 0..height {
             let y_offset = pixel_y + id * height;
 
+            // let y0 = origin_y + (y_offset as f64 / imgy as f64) * pinhole_size
+            // - pinhole_center;
+
+            let y0 = Float::with_val(BIT_PRECISION, &origin_y
+                + &Float::with_val(BIT_PRECISION, y_offset as f64 / imgy as f64) * &pinhole_size)
+                 - &pinhole_center;
+
+            // TODO: SLOWER!
+            // let y0 = Float::with_val(
+            //     BIT_PRECISION,
+            //     pinhole_size.mul_add_ref(
+            //         &Float::with_val(BIT_PRECISION, y_offset as f64 / imgy as f64),
+            //         &origin_y,
+            //     ),
+            // ) - &pinhole_center;
+
             for pixel_x in 0..self.img_width {
-                // TODO: whole self struct has to keep quad value
+
                 let x0 = origin_x.clone()
                     + Float::with_val(BIT_PRECISION, pixel_x as f64 / imgx as f64)
                         * pinhole_size.clone()
                     - pinhole_center.clone();
-                let y0 = origin_y.clone()
-                    + Float::with_val(BIT_PRECISION, y_offset as f64 / imgy as f64)
-                        * pinhole_size.clone()
-                    - pinhole_center.clone();
+
+                // TODO: SLOWER!
+                // let x0 = Float::with_val(
+                //     BIT_PRECISION,
+                //     pinhole_size.mul_add_ref(
+                //         &Float::with_val(BIT_PRECISION, pixel_x as f64 / imgx as f64),
+                //         &origin_x,
+                //     ),
+                // ) - &pinhole_center;
 
                 let mut x = Float::with_val(BIT_PRECISION, 0.0);
                 let mut y = Float::with_val(BIT_PRECISION, 0.0);
@@ -317,16 +339,21 @@ impl Fractal {
                 let mut y2 = Float::with_val(BIT_PRECISION, 0.0);
                 let mut sum = Float::with_val(BIT_PRECISION, 0.0);
 
-                while sum < Float::with_val(BIT_PRECISION, 4.0) && iteration < self.limit {
-                    y = (x.clone() + x.clone()) * y.clone() + y0.clone();
+                while sum < float_four && iteration < self.limit {
+                    // y = (x + x) * y + y0;
+                    y = y.mul_add(&Float::with_val(BIT_PRECISION, &x + &x), &y0);
 
-                    x = x2.clone() - y2.clone() + x0.clone();
+                    // x = x2 - y2 + x0;
+                    x = Float::with_val(BIT_PRECISION, &x2 - &y2) + &x0;
 
-                    x2 = x.clone() * x.clone();
+                    // x2 = x * x;
+                    x2 = Float::with_val(BIT_PRECISION, x.square_ref());
 
-                    y2 = y.clone() * y.clone();
+                    // y2 = y * y;
+                    y2 = Float::with_val(BIT_PRECISION, y.square_ref());
 
-                    sum = x2.clone() + y2.clone();
+                    // sum = x2 + y2;
+                    sum = Float::with_val(BIT_PRECISION, &x2 + &y2);
 
                     iteration += 1;
                 }
@@ -367,7 +394,7 @@ impl Fractal {
 
                 let y0 = _mm512_set1_pd(y0);
 
-                // Step by 4, on every iteration we take 4 floats at once
+                // Step by 8, on every iteration we take 8 floats at once
                 for pixel_x in (0..self.img_width).step_by(8) {
                     let mut iteration = [0, 0, 0, 0, 0, 0, 0, 0];
 

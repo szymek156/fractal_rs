@@ -16,11 +16,12 @@ fn main() {
         // For sake of simplicity, keep plane dimensions aligned to 64 bits
         img_width: 608,
         img_height: 608,
-        origin_x: -1.2568840461230757,
-        origin_y: 0.3796264149022878,
-        pinhole_size: 0.000000000000006071268990206261,
+        origin_x: 0.0,
+        origin_y: 0.0,
+        pinhole_size: 4.0,
         pinhole_step: 1.0,
-        limit: 1200,
+        limit: 200,
+
     };
 
     // let pipe = fractal.run_on_thread();
