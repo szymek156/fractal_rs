@@ -13,6 +13,11 @@ extern crate num_cpus;
 use crate::quadruple::{self, Quad};
 use crossbeam::thread::scope;
 use rayon::prelude::*;
+use rug::{
+    float::{self, FreeCache, Round},
+    ops::{AddAssignRound, AssignRound, MulAssignRound},
+    Float,
+};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
@@ -269,6 +274,59 @@ impl Fractal {
                     y2 = y * y;
 
                     sum = x2 + y2;
+
+                    iteration += 1;
+                }
+
+                pixels[(pixel_y * self.img_height + pixel_x) as usize] =
+                    color_rainbow(iteration, self.limit);
+            }
+        }
+    }
+
+    pub fn mandelbrot_rug(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
+        const BIT_PRECISION: u32 = 64;
+        let imgx = self.img_width;
+        let imgy = self.img_height;
+
+        let pinhole_center = Float::with_val(BIT_PRECISION, self.pinhole_size / 2.0);
+        let pinhole_size = Float::with_val(BIT_PRECISION, self.pinhole_size);
+
+        let origin_x = Float::with_val(BIT_PRECISION, self.origin_x);
+        let origin_y = Float::with_val(BIT_PRECISION, self.origin_y);
+
+        for pixel_y in 0..height {
+            let y_offset = pixel_y + id * height;
+
+            for pixel_x in 0..self.img_width {
+                // TODO: whole self struct has to keep quad value
+                let x0 = origin_x.clone()
+                    + Float::with_val(BIT_PRECISION, pixel_x as f64 / imgx as f64)
+                        * pinhole_size.clone()
+                    - pinhole_center.clone();
+                let y0 = origin_y.clone()
+                    + Float::with_val(BIT_PRECISION, y_offset as f64 / imgy as f64)
+                        * pinhole_size.clone()
+                    - pinhole_center.clone();
+
+                let mut x = Float::with_val(BIT_PRECISION, 0.0);
+                let mut y = Float::with_val(BIT_PRECISION, 0.0);
+                let mut iteration = 0;
+
+                let mut x2 = Float::with_val(BIT_PRECISION, 0.0);
+                let mut y2 = Float::with_val(BIT_PRECISION, 0.0);
+                let mut sum = Float::with_val(BIT_PRECISION, 0.0);
+
+                while sum < Float::with_val(BIT_PRECISION, 4.0) && iteration < self.limit {
+                    y = (x.clone() + x.clone()) * y.clone() + y0.clone();
+
+                    x = x2.clone() - y2.clone() + x0.clone();
+
+                    x2 = x.clone() * x.clone();
+
+                    y2 = y.clone() * y.clone();
+
+                    sum = x2.clone() + y2.clone();
 
                     iteration += 1;
                 }
@@ -687,7 +745,10 @@ impl Fractal {
                         //     self.img_height / num_threads as u32,
                         //     chunk,
                         // );
-                        self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk)
+
+                        self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
+
+                        // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk)
                     })
                     .collect();
 

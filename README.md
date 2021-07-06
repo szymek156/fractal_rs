@@ -2,7 +2,15 @@
 This is a port to Rust of my implementation of rendering a Mandelbrot set written long long time ago in C++.
 # Running
 ```cargo +nightly run --release```
-
+# Navigation
+* ```Left mouse click``` Centers view on given position
+* ```[``` Zoom out
+* ```]``` Zoom in
+* ```=``` Increase iterations
+* ```-``` Decrease iterations
+* ```1...9``` Set center of the window to some POI (6 is iteresting one)
+* ```0``` Reset view
+* ```space``` Dump current position to the console
 # Features
  
 - [x] simple version - one thread + double
