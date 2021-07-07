@@ -16,11 +16,12 @@ fn main() {
         // For sake of simplicity, keep plane dimensions aligned to 64 bits
         img_width: 608,
         img_height: 608,
-        origin_x: 0.0,
-        origin_y: 0.0,
-        pinhole_size: 4.0,
+        origin_x: -1.478099858072492,
+        origin_y: -0.0029962325962097328,
+        pinhole_size: 0.00000000000002192770465560261,
         pinhole_step: 1.0,
-        limit: 200,
+        limit: 1400,
+
 
     };
 

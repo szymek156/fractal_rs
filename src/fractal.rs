@@ -296,15 +296,20 @@ impl Fractal {
         let origin_y = Float::with_val(BIT_PRECISION, self.origin_y);
 
         let float_four = Float::with_val(BIT_PRECISION, 4.0);
+
+        let center_y_offset = Float::with_val(BIT_PRECISION, &origin_y - &pinhole_center);
+        let center_x_offset = Float::with_val(BIT_PRECISION, origin_x - &pinhole_center);
+
         for pixel_y in 0..height {
             let y_offset = pixel_y + id * height;
 
             // let y0 = origin_y + (y_offset as f64 / imgy as f64) * pinhole_size
             // - pinhole_center;
 
-            let y0 = Float::with_val(BIT_PRECISION, &origin_y
-                + &Float::with_val(BIT_PRECISION, y_offset as f64 / imgy as f64) * &pinhole_size)
-                 - &pinhole_center;
+            let y0 = Float::with_val(
+                BIT_PRECISION,
+                &(y_offset as f64 / imgy as f64) * &pinhole_size,
+            ) + &center_y_offset;
 
             // TODO: SLOWER!
             // let y0 = Float::with_val(
@@ -316,11 +321,10 @@ impl Fractal {
             // ) - &pinhole_center;
 
             for pixel_x in 0..self.img_width {
-
-                let x0 = origin_x.clone()
-                    + Float::with_val(BIT_PRECISION, pixel_x as f64 / imgx as f64)
-                        * pinhole_size.clone()
-                    - pinhole_center.clone();
+                let x0 = Float::with_val(
+                    BIT_PRECISION,
+                    &(pixel_x as f64 / imgx as f64) * &pinhole_size,
+                ) + &center_x_offset;
 
                 // TODO: SLOWER!
                 // let x0 = Float::with_val(
