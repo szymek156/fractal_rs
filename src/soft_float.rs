@@ -24,13 +24,13 @@ impl fmt::Display for SoftFloat {
             // number is < |1|
             // Add zeros
             with_dec.push_str("0.");
-            with_dec.push_str(&"0".repeat((self.exponent.abs() - 1) as usize));
+            with_dec.push_str(&"0".repeat((self.exponent.abs()) as usize));
             with_dec.push_str(&self.significand.to_string());
         } else {
             // number is >= |1|
             with_dec = self.significand.to_string();
 
-            with_dec.insert((self.exponent + 1) as usize, '.');
+            with_dec.insert((self.exponent) as usize, '.');
         }
 
         write!(f, "{}{}", if self.positive { "" } else { "-" }, with_dec)
@@ -39,7 +39,7 @@ impl fmt::Display for SoftFloat {
 
 impl From<f64> for SoftFloat {
     fn from(a: f64) -> Self {
-        let mut exponent = 0;
+        let mut exponent = 1;
         let mut positive = true;
         // Normalize exponent, shift significand as long as it is less than base implementation is operating
         // (< 10 in this case).
@@ -93,35 +93,36 @@ impl Mul for SoftFloat {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
-        todo!();
+        let positive = self.positive == rhs.positive;
+        let exponent = self.exponent + rhs.exponent;
+        // TODO: figure out what happens in case of overflow
+        let significand = self.significand * rhs.significand;
+
+        SoftFloat {positive, exponent, significand}
     }
 }
 
 impl PartialOrd for SoftFloat {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        // TODO: that could be simplified 
         if self.positive == other.positive {
             // The same sign
-            if self.positive {
-                // Comparing positive numbers
-                if self.exponent == other.exponent {
-                    // sign and exponend are the same, compare the value
-                    return Some(self.significand.cmp(&other.significand));
-                }
+            let mut a = &self;
+            let mut b = &other;
 
-                // Exponents differ - return which one is bigger
-                return Some(self.exponent.cmp(&other.exponent));
-            } else {
+            if !self.positive {
                 // Comparing negative numbers, changed order of "self" and "other" in cmp call
-
-                if self.exponent == other.exponent {
-                    // sign and exponend are the same, compare the value
-                    return Some(other.significand.cmp(&self.significand));
-                }
-
-                // Exponents differ - return which one is bigger
-                return Some(other.exponent.cmp(&self.exponent));
+                b = &self;
+                a = &other;
             }
+
+            // Comparing positive numbers
+            if self.exponent == other.exponent {
+                // sign and exponend are the same, compare the value
+                return Some(a.significand.cmp(&b.significand));
+            }
+
+            // Exponents differ - return which one is bigger
+            return Some(a.exponent.cmp(&b.exponent));
         } else {
             // Signs differ
             if self.positive {
@@ -143,7 +144,7 @@ mod tests {
         // 0.0000125
         let sf = SoftFloat {
             positive: true,
-            exponent: -5,
+            exponent: -4,
             significand: 125,
         };
 
@@ -155,7 +156,7 @@ mod tests {
         // 60.89523
         let sf = SoftFloat {
             positive: true,
-            exponent: 1,
+            exponent: 2,
             significand: 6089523,
         };
 
@@ -167,7 +168,7 @@ mod tests {
         // 60.89523
         let sf = SoftFloat {
             positive: false,
-            exponent: 1,
+            exponent: 2,
             significand: 6089523,
         };
 
@@ -215,5 +216,13 @@ mod tests {
         assert!(e < f);
         assert!(f > e);
         assert!(d < e);
+    }
+
+    #[test]
+    fn multiplication_works() {    
+        let a = SoftFloat::from(25.0);
+        let b = SoftFloat::from(0.5);
+
+        assert_eq!(a * b, SoftFloat::from(12.5));
     }
 }
