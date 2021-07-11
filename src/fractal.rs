@@ -217,6 +217,15 @@ impl Fractal {
                 let mut sum = 0.0;
 
                 while sum < 4.0 && iteration < self.limit {
+                    if y_offset == self.img_height / 2 && pixel_x == self.img_width / 2 {
+                        // println!("x0, y0 ({}, {})", x0, y0);
+                        // println!(
+                        //     "x offset {}",
+                        //     (pixel_x as f64 / imgx as f64) * self.pinhole_size
+                        // );
+                        // println!("Sum {}, iteration {}, x, y ({}, {})", sum, iteration, x, y);
+                    }
+
                     y = (x + x) * y + y0;
 
                     x = x2 - y2 + x0;
@@ -777,9 +786,10 @@ impl Fractal {
                         //     chunk,
                         // );
 
-                        self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
+                        // self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
 
                         // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk)
+                        self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
                     })
                     .collect();
 
