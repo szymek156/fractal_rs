@@ -788,7 +788,8 @@ impl Fractal {
 
                         // self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
 
-                        // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk)
+                        // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk);
+                        // self.mandelbrot_simd_avx512(id as u32, self.img_height / num_threads as u32, chunk);
                         self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
                     })
                     .collect();

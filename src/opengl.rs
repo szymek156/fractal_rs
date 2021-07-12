@@ -123,7 +123,7 @@ pub fn run(pipe: Pipe) {
 
     let display = glium::Display::new(
         glutin::window::WindowBuilder::new().with_inner_size(LogicalSize::new(800, 800)),
-        glutin::ContextBuilder::new(),
+        glutin::ContextBuilder::new().with_vsync(true),
         &event_loop,
     )
     .unwrap();
