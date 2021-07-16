@@ -38,40 +38,129 @@ impl fmt::Display for SoftFloat {
 }
 
 impl From<f64> for SoftFloat {
+    // Uses normalization but requires significand to be float - that's stupid!
+    // fn from(a: f64) -> Self {
+    //     let mut exponent = 0;
+    //     let mut positive = true;
+    //     // Normalize exponent, shift significand as long as it is less than base implementation is operating
+    //     // (< 10 in this case).
+
+    //     // TODO: it's not perfect but enough for now
+    //     let mut normalized = a;
+    //     if normalized < 0.0 {
+    //         positive = false;
+    //         normalized = normalized.abs();
+    //     }
+
+    //     if normalized != 0.0 {
+    //         while normalized >= 10.0 {
+    //             normalized /= 10.0;
+    //             exponent += 1;
+    //         }
+
+    //         while normalized < 1.0 {
+    //             normalized *= 10.0;
+    //             exponent -= 1;
+    //         }
+    //     }
+
+    //     // Panic, if invalid number if given
+    //     println!("normalized {}", normalized);
+
+    //     let significand: u64 = format!("{}", normalized).replace('.', "").parse().unwrap();
+    //     Self {
+    //         positive,
+    //         exponent,
+    //         significand,
+    //     }
+    // }
+
+    /// Convert to integer, exp is always negative, or 0, significand is integer
+    // fn from(a: f64) -> Self {
+    //     // TODO: exponent is always negative so we could store it as u32
+    //     let mut exponent = 0;
+    //     let mut positive = true;
+
+    //     // TODO: it's not perfect but enough for now
+    //     let mut normalized = a;
+
+    //     println!("converting {}", a);
+
+    //     if normalized < 0.0 {
+    //         positive = false;
+    //         normalized = normalized.abs();
+    //     }
+
+    //     if normalized > 0.0 {
+    //         while normalized < 1.0 {
+    //             normalized *= 10.0;
+    //             exponent -= 1;
+    //         }
+    //     }
+
+    //     if ! (normalized < 1.0) {
+    //         let mut step_ahead = normalized * 10.0;
+
+    //         while (step_ahead % 10.0) > 0.0 {
+    //             println!("step_ahead {}, modulo {}, > 0? {}", step_ahead, step_ahead % 10.0, (step_ahead % 10.0) > 0.0);
+    //             normalized = step_ahead;
+    //             step_ahead *= 10.0;
+    //             exponent -= 1;
+    //         }
+
+    //     }
+
+    //     let significand: u64 = format!("{}", normalized).replace('.', "").parse().unwrap();
+        
+    //     let result = Self {
+    //         positive,
+    //         exponent,
+    //         significand
+    //     };
+
+    //     println!("from float: {} {:?}", a, result);
+
+    //     result
+    // }
+
     fn from(a: f64) -> Self {
+        // TODO: exponent is always negative so we could store it as u32
         let mut exponent = 0;
         let mut positive = true;
-        // Normalize exponent, shift significand as long as it is less than base implementation is operating
-        // (< 10 in this case).
 
         // TODO: it's not perfect but enough for now
         let mut normalized = a;
+
+        println!("converting {}", a);
+        
         if normalized < 0.0 {
             positive = false;
             normalized = normalized.abs();
         }
 
-        if normalized != 0.0 {
-            while normalized >= 10.0 {
-                normalized /= 10.0;
-                exponent += 1;
-            }
+        // Convert to string representation, stupid, and simple. 
+        // But that solves many issues when math is used to get decimal point position
+        let normalized_str = format!("{}", normalized);
 
-            while normalized < 1.0 {
-                normalized *= 10.0;
-                exponent -= 1;
-            }
+        println!("normalized {}", normalized);
+        
+        let parts : Vec<_> = normalized_str.split('.').collect();
+        if parts.len() > 1 {
+            // there is something after a '.'
+            exponent = -1 * parts[1].len() as i32;
         }
 
-        // Panic, if invalid number if given
-        println!("normalized {}", normalized);
-
-        let significand: u64 = format!("{}", normalized).replace('.', "").parse().unwrap();
-        Self {
+        let significand: u64 = parts.join("").parse().unwrap();
+        
+        let result = Self {
             positive,
             exponent,
-            significand,
-        }
+            significand
+        };
+
+        println!("from float: {} {:?}", a, result);
+
+        result
     }
 }
 
@@ -187,16 +276,16 @@ mod tests {
             SoftFloat::from(100.0),
             SoftFloat {
                 positive: true,
-                exponent: 2,
-                significand: 1
+                exponent: 0,
+                significand: 100
             }
         );
         assert_eq!(
             SoftFloat::from(10.0),
             SoftFloat {
                 positive: true,
-                exponent: 1,
-                significand: 1
+                exponent: 0,
+                significand: 10
             }
         );
 
@@ -244,6 +333,16 @@ mod tests {
                 significand: 1
             }
         );
+
+        assert_eq!(
+            SoftFloat::from(12.5),
+            SoftFloat {
+                positive: true,
+                exponent: -1,
+                significand: 125
+            }
+        );
+
     }
 
     #[test]
