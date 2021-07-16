@@ -166,8 +166,8 @@ impl Fractal {
 
         for (x, y, pixel) in imgbuf.enumerate_pixels_mut() {
             let pinhole_center = self.pinhole_size / 2.0;
-            let x0 = self.origin_x + (x as f64 / imgx as f64) * self.pinhole_size - pinhole_center;
             let y0 = self.origin_y + (y as f64 / imgy as f64) * self.pinhole_size - pinhole_center;
+            let x0 = self.origin_x + (x as f64 / imgx as f64) * self.pinhole_size - pinhole_center;
 
             let mut x = 0.0;
             let mut y = 0.0;
@@ -208,7 +208,7 @@ impl Fractal {
             let y_offset = pixel_y + id * height;
             let y0 = (y_offset as f64 / imgy as f64) * self.pinhole_size + center_y;
 
-            // TODO: this repeats every row, store value in an array?
+            // TODO: this repeats every row, store value in an array
             for pixel_x in 0..self.img_width {
                 let x0 = (pixel_x as f64 / imgx as f64) * self.pinhole_size + center_x;
 
@@ -221,6 +221,15 @@ impl Fractal {
                 let mut sum = 0.0;
 
                 while sum < 4.0 && iteration < self.limit {
+                    if y_offset == self.img_height / 2 && pixel_x == self.img_width / 2 {
+                        // println!("x0, y0 ({}, {})", x0, y0);
+                        // println!(
+                        //     "x offset {}",
+                        //     (pixel_x as f64 / imgx as f64) * self.pinhole_size
+                        // );
+                        // println!("Sum {}, iteration {}, x, y ({}, {})", sum, iteration, x, y);
+                    }
+
                     y = (x + x) * y + y0;
 
                     x = x2 - y2 + x0;
@@ -784,6 +793,10 @@ impl Fractal {
                         // self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
 
                         // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk);
+<<<<<<< Updated upstream
+                        // self.mandelbrot_simd_avx512(id as u32, self.img_height / num_threads as u32, chunk);
+=======
+>>>>>>> Stashed changes
                         self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
                     })
                     .collect();
