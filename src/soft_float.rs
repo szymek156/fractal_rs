@@ -111,7 +111,7 @@ impl From<f64> for SoftFloat {
     //     }
 
     //     let significand: u64 = format!("{}", normalized).replace('.', "").parse().unwrap();
-        
+
     //     let result = Self {
     //         positive,
     //         exponent,
@@ -132,30 +132,30 @@ impl From<f64> for SoftFloat {
         let mut normalized = a;
 
         println!("converting {}", a);
-        
+
         if normalized < 0.0 {
             positive = false;
             normalized = normalized.abs();
         }
 
-        // Convert to string representation, stupid, and simple. 
+        // Convert to string representation, stupid, and simple.
         // But that solves many issues when math is used to get decimal point position
         let normalized_str = format!("{}", normalized);
 
         println!("normalized {}", normalized);
-        
-        let parts : Vec<_> = normalized_str.split('.').collect();
+
+        let parts: Vec<_> = normalized_str.split('.').collect();
         if parts.len() > 1 {
             // there is something after a '.'
             exponent = -1 * parts[1].len() as i32;
         }
 
         let significand: u64 = parts.join("").parse().unwrap();
-        
+
         let result = Self {
             positive,
             exponent,
-            significand
+            significand,
         };
 
         println!("from float: {} {:?}", a, result);
@@ -185,9 +185,23 @@ impl Mul for SoftFloat {
 
     fn mul(self, rhs: Self) -> Self {
         let positive = self.positive == rhs.positive;
-        let exponent = self.exponent + rhs.exponent;
+        let mut exponent = self.exponent + rhs.exponent;
         // TODO: figure out what happens in case of overflow
-        let significand = self.significand * rhs.significand;
+        let mut significand = self.significand * rhs.significand;
+
+        if exponent < 0 {
+            // Exponent < 0 -> there is a fraction part
+            // Remove trailing zeros from fraction part
+            while significand > 0 && significand % 10 == 0 {
+                significand /= 10;
+                exponent += 1;
+            }
+        }
+
+        if significand == 0 {
+            // normalize zero
+            exponent = 0;
+        }
 
         SoftFloat {
             positive,
@@ -210,14 +224,27 @@ impl PartialOrd for SoftFloat {
                 a = &other;
             }
 
-            // Comparing positive numbers
             if self.exponent == other.exponent {
                 // sign and exponend are the same, compare the value
                 return Some(a.significand.cmp(&b.significand));
             }
 
-            // Exponents differ - return which one is bigger
-            return Some(a.exponent.cmp(&b.exponent));
+            let exp = a.exponent.min(b.exponent).abs() as u32;
+            // TODO: when switching to base of 2, that would be a simple bitshift
+            let exp = 10_u64.pow(exp);
+
+            // Get whole values
+            let mut a_whole = a.significand / exp;
+            let mut b_whole = b.significand / exp;
+
+            if a_whole == 0 && b_whole == 0 {
+                // both values < 1.0
+                // compare exponents
+                return Some(a.exponent.cmp(&b.exponent));
+            }
+
+            // One of values, or both are >= 1, compare
+            return Some(a_whole.cmp(&b_whole));
         } else {
             // Signs differ
             if self.positive {
@@ -268,6 +295,13 @@ mod tests {
         };
 
         assert_eq!("-60.89523", format!("{}", sf));
+    }
+
+    #[test]
+    fn to_string_works() {
+        for t in [100.0, 10.0, 1.0, 0.0, 0.1, 0.01, 0.001] {
+            assert_eq!(format!("{}", SoftFloat::from(t)), format!("{}", t));
+        }
     }
 
     #[test]
@@ -342,7 +376,6 @@ mod tests {
                 significand: 125
             }
         );
-
     }
 
     #[test]
@@ -368,22 +401,48 @@ mod tests {
         assert!(b > c);
         assert!(c < a);
 
-        // Mixed numbers
+        // // Mixed numbers
         assert!(d < c);
         assert!(c > d);
 
-        // Negative numbers
+        // // Negative numbers
         assert!(f == f);
         assert!(e < f);
         assert!(f > e);
         assert!(d < e);
+
+        assert!(SoftFloat::from(11.01) > SoftFloat::from(11.001));
     }
 
     #[test]
     fn multiplication_works() {
-        let a = SoftFloat::from(25.0);
-        let b = SoftFloat::from(0.5);
-
-        assert_eq!(a * b, SoftFloat::from(12.5));
+        for (a, b, c) in [
+            (25.0, 0.5, 12.5),
+            (0.9, 0.1, 0.09),
+            (3.14, 2.0, 6.28),
+            (6.28, 0.02, 0.1256),
+            (6.28, 0.5, 3.14),
+            (0.00046, 0.000764, 0.00000035144),
+            // Check for zero
+            (1.0, 0.0, 0.0),
+            (0.0, 0.1, 0.0),
+            (12345413.054322345000004, 0.0, 0.0),
+            // Check for one
+            (1.0, 0.1, 0.1),
+            (0.1, 1.0, 0.1),
+            (0.01, 1.0, 0.01),
+            (1.01, 1.0, 1.01),
+            (10.0, 1.0, 10.0),
+            (100.0, 1.0, 100.0),
+            (10.01, 1.0, 10.01),
+            // Check for base - 10 for now
+            (10.0, 10.0, 100.0),
+            (10.0, 100.0, 1000.0),
+            (10.1, 10.01, 101.101),
+            (10.0, 10.05, 100.5),
+            (0.00001, 10000.0, 0.1),
+        ] {
+            assert_eq!(SoftFloat::from(a) * SoftFloat::from(b), SoftFloat::from(c));
+        }
     }
 }
