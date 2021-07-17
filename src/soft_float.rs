@@ -18,111 +18,27 @@ pub struct SoftFloat {
 /// Get nice "float like" representation
 impl fmt::Display for SoftFloat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut with_dec = String::new();
+        let mut with_dec = self.significand.to_string();
 
         if self.exponent < 0 {
-            // number is < |1|
-            // Add zeros
-            with_dec.push_str("0.");
-            with_dec.push_str(&"0".repeat((self.exponent.abs()) as usize));
-            with_dec.push_str(&self.significand.to_string());
-        } else {
-            // number is >= |1|
-            with_dec = self.significand.to_string();
+            // there is fraction part
+            let idx = with_dec.len() as i32  + self.exponent;
+            if idx <= 0 {
+                // value is < 1.0, add leading zeros
+                let zeros = format!("0.{}", "0".repeat(idx.abs() as usize));
+                with_dec.insert_str(0, &zeros);
+                
+            } else {
+                with_dec.insert(idx as usize, '.');
+            }
+        } // else, no fraction part, print 1, not 1.0
 
-            with_dec.insert((self.exponent) as usize, '.');
-        }
 
         write!(f, "{}{}", if self.positive { "" } else { "-" }, with_dec)
     }
 }
 
 impl From<f64> for SoftFloat {
-    // Uses normalization but requires significand to be float - that's stupid!
-    // fn from(a: f64) -> Self {
-    //     let mut exponent = 0;
-    //     let mut positive = true;
-    //     // Normalize exponent, shift significand as long as it is less than base implementation is operating
-    //     // (< 10 in this case).
-
-    //     // TODO: it's not perfect but enough for now
-    //     let mut normalized = a;
-    //     if normalized < 0.0 {
-    //         positive = false;
-    //         normalized = normalized.abs();
-    //     }
-
-    //     if normalized != 0.0 {
-    //         while normalized >= 10.0 {
-    //             normalized /= 10.0;
-    //             exponent += 1;
-    //         }
-
-    //         while normalized < 1.0 {
-    //             normalized *= 10.0;
-    //             exponent -= 1;
-    //         }
-    //     }
-
-    //     // Panic, if invalid number if given
-    //     println!("normalized {}", normalized);
-
-    //     let significand: u64 = format!("{}", normalized).replace('.', "").parse().unwrap();
-    //     Self {
-    //         positive,
-    //         exponent,
-    //         significand,
-    //     }
-    // }
-
-    /// Convert to integer, exp is always negative, or 0, significand is integer
-    // fn from(a: f64) -> Self {
-    //     // TODO: exponent is always negative so we could store it as u32
-    //     let mut exponent = 0;
-    //     let mut positive = true;
-
-    //     // TODO: it's not perfect but enough for now
-    //     let mut normalized = a;
-
-    //     println!("converting {}", a);
-
-    //     if normalized < 0.0 {
-    //         positive = false;
-    //         normalized = normalized.abs();
-    //     }
-
-    //     if normalized > 0.0 {
-    //         while normalized < 1.0 {
-    //             normalized *= 10.0;
-    //             exponent -= 1;
-    //         }
-    //     }
-
-    //     if ! (normalized < 1.0) {
-    //         let mut step_ahead = normalized * 10.0;
-
-    //         while (step_ahead % 10.0) > 0.0 {
-    //             println!("step_ahead {}, modulo {}, > 0? {}", step_ahead, step_ahead % 10.0, (step_ahead % 10.0) > 0.0);
-    //             normalized = step_ahead;
-    //             step_ahead *= 10.0;
-    //             exponent -= 1;
-    //         }
-
-    //     }
-
-    //     let significand: u64 = format!("{}", normalized).replace('.', "").parse().unwrap();
-
-    //     let result = Self {
-    //         positive,
-    //         exponent,
-    //         significand
-    //     };
-
-    //     println!("from float: {} {:?}", a, result);
-
-    //     result
-    // }
-
     fn from(a: f64) -> Self {
         // TODO: exponent is always negative so we could store it as u32
         let mut exponent = 0;
@@ -266,7 +182,7 @@ mod tests {
         // 0.0000125
         let sf = SoftFloat {
             positive: true,
-            exponent: -4,
+            exponent: -7,
             significand: 125,
         };
 
@@ -278,7 +194,7 @@ mod tests {
         // 60.89523
         let sf = SoftFloat {
             positive: true,
-            exponent: 2,
+            exponent: -5,
             significand: 6089523,
         };
 
@@ -290,7 +206,7 @@ mod tests {
         // 60.89523
         let sf = SoftFloat {
             positive: false,
-            exponent: 2,
+            exponent: -5,
             significand: 6089523,
         };
 
@@ -299,7 +215,7 @@ mod tests {
 
     #[test]
     fn to_string_works() {
-        for t in [100.0, 10.0, 1.0, 0.0, 0.1, 0.01, 0.001] {
+        for t in [100.0, 10.0, 1.0, 1.0101, 0.0, 0.1, 0.01, 0.001] {
             assert_eq!(format!("{}", SoftFloat::from(t)), format!("{}", t));
         }
     }
