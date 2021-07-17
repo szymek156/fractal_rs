@@ -22,17 +22,15 @@ impl fmt::Display for SoftFloat {
 
         if self.exponent < 0 {
             // there is fraction part
-            let idx = with_dec.len() as i32  + self.exponent;
+            let idx = with_dec.len() as i32 + self.exponent;
             if idx <= 0 {
                 // value is < 1.0, add leading zeros
                 let zeros = format!("0.{}", "0".repeat(idx.abs() as usize));
                 with_dec.insert_str(0, &zeros);
-                
             } else {
                 with_dec.insert(idx as usize, '.');
             }
         } // else, no fraction part, print 1, not 1.0
-
 
         write!(f, "{}{}", if self.positive { "" } else { "-" }, with_dec)
     }
@@ -140,27 +138,42 @@ impl PartialOrd for SoftFloat {
                 a = &other;
             }
 
-            if self.exponent == other.exponent {
-                // sign and exponend are the same, compare the value
-                return Some(a.significand.cmp(&b.significand));
+            let a_split = 10u64.pow(a.exponent.abs() as u32);
+            let a_whole = a.significand / a_split;
+            let a_fraction = a.significand % a_split;
+
+            let b_split = 10u64.pow(b.exponent.abs() as u32);
+            let b_whole = b.significand / b_split;
+            let b_fraction = b.significand % b_split;
+
+            println!("Comparing {:?} with {:?}", a, b);
+            println!("a_whole {} b_whole {}", a_whole, b_whole);
+            println!("a_fraction {} b_fraction {}", a_fraction, b_fraction);
+
+            if a_whole == b_whole {
+                if a_fraction == b_fraction {
+                    if a.exponent == b.exponent {
+                        return Some(Ordering::Equal);
+                    } else {
+                        return Some(a.exponent.cmp(&b.exponent));
+                    }
+                } else if a_fraction < b_fraction {
+                    if a.exponent == b.exponent {
+                        return Some(a_fraction.cmp(&b_fraction));
+                    } else {
+                        return Some(a.exponent.cmp(&b.exponent));
+                    }
+                } else /* fraction_a > fraction_b */{
+                    if a.exponent == b.exponent {
+                        return Some(a_fraction.cmp(&b_fraction));
+                    } else {
+                        return Some(b.exponent.cmp(&a.exponent));
+                    }
+                }
+            } else {
+                return Some(a_whole.cmp(&b_whole));
             }
 
-            let exp = a.exponent.min(b.exponent).abs() as u32;
-            // TODO: when switching to base of 2, that would be a simple bitshift
-            let exp = 10_u64.pow(exp);
-
-            // Get whole values
-            let mut a_whole = a.significand / exp;
-            let mut b_whole = b.significand / exp;
-
-            if a_whole == 0 && b_whole == 0 {
-                // both values < 1.0
-                // compare exponents
-                return Some(a.exponent.cmp(&b.exponent));
-            }
-
-            // One of values, or both are >= 1, compare
-            return Some(a_whole.cmp(&b_whole));
         } else {
             // Signs differ
             if self.positive {
@@ -327,7 +340,42 @@ mod tests {
         assert!(f > e);
         assert!(d < e);
 
+        
         assert!(SoftFloat::from(11.01) > SoftFloat::from(11.001));
+        assert!(SoftFloat::from(0.09) > SoftFloat::from(0.011));
+        assert!(SoftFloat::from(9.1234) > SoftFloat::from(9.123));
+
+        assert!(SoftFloat::from(0.1) > SoftFloat::from(0.000123));
+
+        // Comparsion turned out to be harder task than initially thought, there are many combinations
+        // of sign, whole part, and fractional + exponent part.
+        // This test tries to cover it all
+
+        // sign | whole | fraction | exp
+        // ++   |  ==   |    ==    | ==
+        assert!(SoftFloat::from(1.23) == SoftFloat::from(1.23));
+        // ++   |  ==   |    ==    | <
+        assert!(SoftFloat::from(1.0023) < SoftFloat::from(1.23));
+        // ++   |  ==   |    ==    | >
+        assert!(SoftFloat::from(1.23) > SoftFloat::from(1.023));
+
+        // ++   |  ==   |    <    | =
+        assert!(SoftFloat::from(1.11) < SoftFloat::from(1.99));
+        // ++   |  ==   |    <    | <
+        assert!(SoftFloat::from(1.011) < SoftFloat::from(1.99));
+        // ++   |  ==   |    <    | >
+        assert!(SoftFloat::from(1.11) > SoftFloat::from(1.099));
+        
+        // ++   |  ==   |    >    | ==
+        assert!(SoftFloat::from(1.99) > SoftFloat::from(1.11));
+        // ++   |  ==   |    >    | <
+        assert!(SoftFloat::from(1.099) < SoftFloat::from(1.11));
+        // ++   |  ==   |    >    | >
+        assert!(SoftFloat::from(1.99) > SoftFloat::from(1.011));
+        
+        // ++   |  <   |    ==    | ==
+        assert!(SoftFloat::from(2.0) < SoftFloat::from(3.0));
+        // TODO: add 0
     }
 
     #[test]
