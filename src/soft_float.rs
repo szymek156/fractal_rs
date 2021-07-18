@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::fmt;
+use std::mem::swap;
 use std::ops::{Add, Mul, Sub};
 
 // clone + copy to be able to do: x + x etc.
@@ -100,7 +101,7 @@ impl Mul for SoftFloat {
     fn mul(self, rhs: Self) -> Self {
         let positive = self.positive == rhs.positive;
         let mut exponent = self.exponent + rhs.exponent;
-        // TODO: figure out what happens in case of overflow
+        // Will panic in case of overflow - in debug, what about release?
         let mut significand = self.significand * rhs.significand;
 
         if exponent < 0 {
@@ -126,6 +127,7 @@ impl Mul for SoftFloat {
 }
 
 impl PartialOrd for SoftFloat {
+    // TODO: this is ridicilous, approach needs to be changed
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self.positive == other.positive {
             // The same sign
@@ -136,44 +138,85 @@ impl PartialOrd for SoftFloat {
                 // Comparing negative numbers, changed order of "self" and "other" in cmp call
                 b = &self;
                 a = &other;
+                // TODO: ?
+                // swap(a,b);
             }
 
             let a_split = 10u64.pow(a.exponent.abs() as u32);
             let a_whole = a.significand / a_split;
-            let a_fraction = a.significand % a_split;
+            let mut a_fraction = a.significand % a_split;
+            // TODO: fix that later
+            let a_fraction_len = format!("{}", a_fraction).len() as i32;
+            let mut a_norm_exp = a.exponent;
 
             let b_split = 10u64.pow(b.exponent.abs() as u32);
             let b_whole = b.significand / b_split;
-            let b_fraction = b.significand % b_split;
+            let mut b_fraction = b.significand % b_split;
+            let b_fraction_len = format!("{}", b_fraction).len() as i32;
+            let mut b_norm_exp = b.exponent;
+
+            println!("a_fraction {} b_fraction {}", a_fraction, b_fraction);
+
+            if a_fraction_len != b_fraction_len {
+                let zeros = (a_fraction_len - b_fraction_len).abs() as u32;
+
+                if a_fraction_len < b_fraction_len {
+                    // TODO: this can explode
+                    // 0.9 cmp 0.000000000000011
+                    a_fraction *= 10u64.pow(zeros);
+                    a_norm_exp -= zeros as i32;
+
+                }
+                else {
+                    b_fraction *= 10u64.pow(zeros);
+                    b_norm_exp -= zeros as i32;
+                }
+            }
 
             println!("Comparing {:?} with {:?}", a, b);
             println!("a_whole {} b_whole {}", a_whole, b_whole);
-            println!("a_fraction {} b_fraction {}", a_fraction, b_fraction);
+            println!(
+                "a_fraction normalized {} b_fraction normalized {}",
+                a_fraction, b_fraction
+            );
 
             if a_whole == b_whole {
+                println!("a_whole == b_whole");
                 if a_fraction == b_fraction {
-                    if a.exponent == b.exponent {
+                    println!("a_fraction == b_fraction");
+                    if a_norm_exp == b_norm_exp {
+                        println!("a.exponent == b.exponent");
                         return Some(Ordering::Equal);
                     } else {
+                        println!("a.exponent != b.exponent");
                         return Some(a.exponent.cmp(&b.exponent));
                     }
                 } else if a_fraction < b_fraction {
+                    println!("a_fraction < b_fraction");
                     if a.exponent == b.exponent {
+                        println!("a.exponent == b.exponent");
                         return Some(a_fraction.cmp(&b_fraction));
                     } else {
+                        println!("a.exponent != b.exponent");
                         return Some(a.exponent.cmp(&b.exponent));
                     }
-                } else /* fraction_a > fraction_b */{
-                    if a.exponent == b.exponent {
+                } else
+                /* fraction_a > fraction_b */
+                {
+                    println!("a_fraction > b_fraction");
+                    if a_norm_exp == b_norm_exp {
+                        println!("a.exponent == b.exponent");
                         return Some(a_fraction.cmp(&b_fraction));
                     } else {
-                        return Some(b.exponent.cmp(&a.exponent));
+                        println!("a.exponent != b.exponent");
+                        // here
+                        return Some(a.exponent.cmp(&b.exponent));
                     }
                 }
             } else {
+                println!("a_whole == b_whole");
                 return Some(a_whole.cmp(&b_whole));
             }
-
         } else {
             // Signs differ
             if self.positive {
@@ -340,7 +383,6 @@ mod tests {
         assert!(f > e);
         assert!(d < e);
 
-        
         assert!(SoftFloat::from(11.01) > SoftFloat::from(11.001));
         assert!(SoftFloat::from(0.09) > SoftFloat::from(0.011));
         assert!(SoftFloat::from(9.1234) > SoftFloat::from(9.123));
@@ -365,14 +407,14 @@ mod tests {
         assert!(SoftFloat::from(1.011) < SoftFloat::from(1.99));
         // ++   |  ==   |    <    | >
         assert!(SoftFloat::from(1.11) > SoftFloat::from(1.099));
-        
+
         // ++   |  ==   |    >    | ==
         assert!(SoftFloat::from(1.99) > SoftFloat::from(1.11));
         // ++   |  ==   |    >    | <
         assert!(SoftFloat::from(1.099) < SoftFloat::from(1.11));
         // ++   |  ==   |    >    | >
         assert!(SoftFloat::from(1.99) > SoftFloat::from(1.011));
-        
+
         // ++   |  <   |    ==    | ==
         assert!(SoftFloat::from(2.0) < SoftFloat::from(3.0));
         // TODO: add 0
