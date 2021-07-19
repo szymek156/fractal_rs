@@ -16,6 +16,24 @@ pub struct SoftFloat {
     significand: u64,
 }
 
+impl SoftFloat {
+    pub fn remove_trailing_zeros(&mut self) {
+        if self.exponent < 0 {
+            // Exponent < 0 -> there is a fraction part
+            // Remove trailing zeros from fraction part
+            while self.significand > 0 && self.significand % 10 == 0 {
+                self.significand /= 10;
+                self.exponent += 1;
+            }
+        }
+
+        if self.significand == 0 {
+            // normalize zero
+            self.exponent = 0;
+        }
+    }
+}
+
 /// Get nice "float like" representation
 impl fmt::Display for SoftFloat {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -82,8 +100,35 @@ impl From<f64> for SoftFloat {
 impl Add for SoftFloat {
     type Output = Self;
 
-    fn add(self, rhs: Self) -> Self {
-        todo!();
+    fn add(mut self, mut rhs: Self) -> Self {
+        // TODO: take care of sign
+        // TODO: add 0?
+        // TODO: overflowing?
+
+        let a_exp = self.exponent.abs();
+        let b_exp = rhs.exponent.abs();
+
+        if a_exp < b_exp {
+            let zeros = b_exp - a_exp;
+            self.significand *= 10u64.pow(zeros as u32);
+        } else if a_exp > b_exp {
+            let zeros = a_exp - b_exp;
+            rhs.significand *= 10u64.pow(zeros as u32);
+        }
+
+        let significand = self.significand + rhs.significand;
+        let exponent = self.exponent.min(rhs.exponent);
+        let positive = self.positive && rhs.positive;
+
+        let mut res =Self {
+            positive,
+            exponent,
+            significand,
+        };
+
+        res.remove_trailing_zeros();
+
+        res
     }
 }
 
@@ -104,25 +149,15 @@ impl Mul for SoftFloat {
         // Will panic in case of overflow - in debug, what about release?
         let mut significand = self.significand * rhs.significand;
 
-        if exponent < 0 {
-            // Exponent < 0 -> there is a fraction part
-            // Remove trailing zeros from fraction part
-            while significand > 0 && significand % 10 == 0 {
-                significand /= 10;
-                exponent += 1;
-            }
-        }
-
-        if significand == 0 {
-            // normalize zero
-            exponent = 0;
-        }
-
-        SoftFloat {
+        let mut res = SoftFloat {
             positive,
             exponent,
             significand,
-        }
+        };
+
+        res.remove_trailing_zeros();
+
+        res
     }
 }
 
@@ -165,9 +200,7 @@ impl PartialOrd for SoftFloat {
                     // 0.9 cmp 0.000000000000011
                     a_fraction *= 10u64.pow(zeros);
                     a_norm_exp -= zeros as i32;
-
-                }
-                else {
+                } else {
                     b_fraction *= 10u64.pow(zeros);
                     b_norm_exp -= zeros as i32;
                 }
@@ -357,6 +390,7 @@ mod tests {
         assert_eq!("-123456978.000069696969", format!("{}", sf));
     }
 
+    // TODO: add fuzz testing
     #[test]
     fn comparsion_works() {
         let a = SoftFloat::from(100.2345);
@@ -449,6 +483,33 @@ mod tests {
             (0.00001, 10000.0, 0.1),
         ] {
             assert_eq!(SoftFloat::from(a) * SoftFloat::from(b), SoftFloat::from(c));
+        }
+    }
+
+    #[test]
+    fn addition_works() {
+        for (a, b, c) in [
+            (25.0, 0.5, 25.5),
+            (0.9, 0.1, 1.0),
+            (3.14, 2.0, 5.14),
+            (6.28, 0.02, 6.3),
+            (6.28, 0.5, 6.78),
+            (0.00046, 0.000764, 0.001224),
+            (0.0, 0.1, 0.1),
+            (12345413.0543223, 0.0, 12345413.0543223),
+            (0.1, 1.0, 1.1),
+            (0.01, 1.0, 1.01),
+            (1.01, 1.0, 2.01),
+            (10.0, 1.0, 11.0),
+            (100.0, 1.0, 101.0),
+            (10.01, 1.0, 11.01),
+            (10.0, 10.0, 20.0),
+            (10.0, 100.0, 110.0),
+            (10.1, 10.01, 20.11),
+            (0.00001, 10000.0, 10000.00001),
+        ] {
+            println!("{} + {} = {}", a, b, c);
+            assert_eq!(SoftFloat::from(a) + SoftFloat::from(b), SoftFloat::from(c));
         }
     }
 }
