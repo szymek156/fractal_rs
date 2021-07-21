@@ -17,6 +17,10 @@ pub struct SoftFloat {
 }
 
 impl SoftFloat {
+    /// ```
+    /// 3.1415000 -> 3.1415
+    /// 1.0       -> 1.0
+    /// ```
     pub fn remove_trailing_zeros(&mut self) {
         if self.exponent < 0 {
             // Exponent < 0 -> there is a fraction part
@@ -30,6 +34,25 @@ impl SoftFloat {
         if self.significand == 0 {
             // normalize zero
             self.exponent = 0;
+        }
+    }
+
+    /// ```
+    /// 1.1234    -> 1.234000
+    /// 1.0005646 -> 1.000546
+    /// ```
+    /// Note it changes significands, but does not changes exponents.
+    /// Therefore after this conversion, representation is invalid!
+    fn expand_significand_to(&mut self, b: &mut Self) {
+        let a_exp = self.exponent.abs();
+        let b_exp = b.exponent.abs();
+
+        if a_exp < b_exp {
+            let zeros = b_exp - a_exp;
+            self.significand *= 10u64.pow(zeros as u32);
+        } else if a_exp > b_exp {
+            let zeros = a_exp - b_exp;
+            b.significand *= 10u64.pow(zeros as u32);
         }
     }
 }
@@ -69,6 +92,9 @@ impl From<f64> for SoftFloat {
         if normalized < 0.0 {
             positive = false;
             normalized = normalized.abs();
+        } else if normalized == -0.0 {
+            // Stupid corner case of floats
+            normalized = 0.0;
         }
 
         // Convert to string representation, stupid, and simple.
@@ -101,26 +127,29 @@ impl Add for SoftFloat {
     type Output = Self;
 
     fn add(mut self, mut rhs: Self) -> Self {
-        // TODO: take care of sign
-        // TODO: add 0?
         // TODO: overflowing?
 
-        let a_exp = self.exponent.abs();
-        let b_exp = rhs.exponent.abs();
+        if self.positive && !rhs.positive {
+            // 5 + (-3) = 5 - 3
+            rhs.positive = true;
 
-        if a_exp < b_exp {
-            let zeros = b_exp - a_exp;
-            self.significand *= 10u64.pow(zeros as u32);
-        } else if a_exp > b_exp {
-            let zeros = a_exp - b_exp;
-            rhs.significand *= 10u64.pow(zeros as u32);
+            return self - rhs;
+        } else if !self.positive && rhs.positive {
+            // -5 + 3 = 3 - +5
+            // -20 + 30 = 30 - +20
+            self.positive = true;
+
+            return rhs - self;
         }
+
+        // Both positive, or both negative
+        self.expand_significand_to(&mut rhs);
 
         let significand = self.significand + rhs.significand;
         let exponent = self.exponent.min(rhs.exponent);
         let positive = self.positive && rhs.positive;
 
-        let mut res =Self {
+        let mut res = Self {
             positive,
             exponent,
             significand,
@@ -135,8 +164,65 @@ impl Add for SoftFloat {
 impl Sub for SoftFloat {
     type Output = Self;
 
-    fn sub(self, rhs: Self) -> Self::Output {
-        todo!();
+    fn sub(mut self, mut rhs: Self) -> Self::Output {
+        if !self.positive && rhs.positive {
+            // -25.0 -  +0.5 -> 25 + 0.5 -> 25.5 -> -25.5
+            self.positive = true;
+
+            let mut res = self + rhs;
+            res.positive = false;
+
+            return res;
+        } else if self.positive && !rhs.positive {
+            rhs.positive = true;
+            // +4 - -3 -> 4 + 3 = 7
+            return self + rhs;
+        }
+
+        // 4 - 5
+        // -25 - -0.5 = -25 + 0.5 = -24.5
+        // Both positive, or negative
+        self.expand_significand_to(&mut rhs);
+
+        let mut significand = 0;
+        let mut positive = true;
+
+        if self.significand < rhs.significand {
+            // 5 - 7 --> 7 - 5 -> 2 -> -2
+            significand = rhs.significand - self.significand;
+
+            positive = if !self.positive && !rhs.positive {
+                // -25 - -30 =  -25 + 30 = 5
+                true
+            } else
+            /* both positive, other cases are handled above */
+            {
+                false
+            };
+        } else {
+            // 6 - 4 = 2
+            significand = self.significand - rhs.significand;
+
+            positive = if !self.positive && !rhs.positive {
+                // -25 - -0.5 = -24.5
+                false
+            } else /* both positive, other cases handled at the begining */ {
+                // +6 - +4 = 2
+                true
+            };
+        }
+
+        let exponent = self.exponent.min(rhs.exponent);
+
+        let mut res = Self {
+            positive,
+            exponent,
+            significand,
+        };
+
+        res.remove_trailing_zeros();
+
+        res
     }
 }
 
@@ -304,9 +390,15 @@ mod tests {
 
     #[test]
     fn to_string_works() {
-        for t in [100.0, 10.0, 1.0, 1.0101, 0.0, 0.1, 0.01, 0.001] {
+        for t in [
+            100.0, 10.0, 1.0, 1.0101, 0.0, 0.1, 0.01, 0.001, //
+            -100.0, -10.0, -1.0, -1.0101, -0.1, -0.01, -0.001,
+        ] {
             assert_eq!(format!("{}", SoftFloat::from(t)), format!("{}", t));
         }
+
+        // There is no negative zero
+        assert_eq!(format!("{}", SoftFloat::from(-0.0)), "0");
     }
 
     #[test]
@@ -340,6 +432,33 @@ mod tests {
         assert_eq!(
             SoftFloat::from(0.0),
             SoftFloat {
+                positive: true,
+                exponent: 0,
+                significand: 0
+            }
+        );
+
+        assert_eq!(
+            SoftFloat::from(0.00),
+            SoftFloat {
+                positive: true,
+                exponent: 0,
+                significand: 0
+            }
+        );
+        assert_eq!(
+            SoftFloat::from(0.0000000),
+            SoftFloat {
+                positive: true,
+                exponent: 0,
+                significand: 0
+            }
+        );
+
+        assert_eq!(
+            SoftFloat::from(-0.0),
+            SoftFloat {
+                // Don't accept negative zeros
                 positive: true,
                 exponent: 0,
                 significand: 0
@@ -456,32 +575,7 @@ mod tests {
 
     #[test]
     fn multiplication_works() {
-        for (a, b, c) in [
-            (25.0, 0.5, 12.5),
-            (0.9, 0.1, 0.09),
-            (3.14, 2.0, 6.28),
-            (6.28, 0.02, 0.1256),
-            (6.28, 0.5, 3.14),
-            (0.00046, 0.000764, 0.00000035144),
-            // Check for zero
-            (1.0, 0.0, 0.0),
-            (0.0, 0.1, 0.0),
-            (12345413.054322345000004, 0.0, 0.0),
-            // Check for one
-            (1.0, 0.1, 0.1),
-            (0.1, 1.0, 0.1),
-            (0.01, 1.0, 0.01),
-            (1.01, 1.0, 1.01),
-            (10.0, 1.0, 10.0),
-            (100.0, 1.0, 100.0),
-            (10.01, 1.0, 10.01),
-            // Check for base - 10 for now
-            (10.0, 10.0, 100.0),
-            (10.0, 100.0, 1000.0),
-            (10.1, 10.01, 101.101),
-            (10.0, 10.05, 100.5),
-            (0.00001, 10000.0, 0.1),
-        ] {
+        for (a, b, c) in [(0.00001, 10000.0, 0.1)] {
             assert_eq!(SoftFloat::from(a) * SoftFloat::from(b), SoftFloat::from(c));
         }
     }
@@ -489,6 +583,7 @@ mod tests {
     #[test]
     fn addition_works() {
         for (a, b, c) in [
+            // Both positive
             (25.0, 0.5, 25.5),
             (0.9, 0.1, 1.0),
             (3.14, 2.0, 5.14),
@@ -496,6 +591,8 @@ mod tests {
             (6.28, 0.5, 6.78),
             (0.00046, 0.000764, 0.001224),
             (0.0, 0.1, 0.1),
+            (5.013, 0.0, 5.013),
+            (0.0, 0.0, 0.0),
             (12345413.0543223, 0.0, 12345413.0543223),
             (0.1, 1.0, 1.1),
             (0.01, 1.0, 1.01),
@@ -507,9 +604,165 @@ mod tests {
             (10.0, 100.0, 110.0),
             (10.1, 10.01, 20.11),
             (0.00001, 10000.0, 10000.00001),
+            // First negative
+            (-25.0, 0.5, -24.5),
+            (-0.9, 0.1, -0.8),
+            (-3.14, 2.0, -1.14),
+            (-6.28, 0.02, -6.26),
+            (-6.28, 0.5, -5.78),
+            (-0.00046, 0.000764, 0.000304),
+            (-0.0, 0.1, 0.1),
+            (-5.013, 0.0, -5.013),
+            (-0.0, 0.0, 0.0),
+            (-12345413.0543223, 0.0, -12345413.0543223),
+            (-0.1, 1.0, 0.9),
+            (-0.01, 1.0, 0.99),
+            (-1.01, 1.0, -0.01),
+            (-10.0, 1.0, -9.0),
+            (-100.0, 1.0, -99.0),
+            (-10.01, 1.0, -9.01),
+            (-10.0, 10.0, 0.0),
+            (-10.0, 100.0, 90.0),
+            (-10.1, 10.01, -0.09),
+            (-0.00001, 10000.0, 9999.99999),
+            // Second negative
+            (25.0, -0.5, 24.5),
+            (0.9, -0.1, 0.8),
+            (3.14, -2.0, 1.14),
+            (6.28, -0.02, 6.26),
+            (6.28, -0.5, 5.78),
+            (0.00046, -0.000764, -0.000304),
+            (0.0, -0.1, -0.1),
+            (5.013, -0.0, 5.013),
+            (0.0, -0.0, 0.0),
+            (12345413.0543223, -0.0, 12345413.0543223),
+            (0.1, -1.0, -0.9),
+            (0.01, -1.0, -0.99),
+            (1.01, -1.0, 0.01),
+            (10.0, -1.0, 9.0),
+            (100.0, -1.0, 99.0),
+            (10.01, -1.0, 9.01),
+            (10.0, -10.0, 0.0),
+            (10.0, -100.0, -90.0),
+            (10.1, -10.01, 0.09),
+            (0.00001, -10000.0, -9999.99999),
+            // Both negative
+            (-25.0, -0.5, -25.5),
+            (-0.9, -0.1, -1.0),
+            (-3.14, -2.0, -5.14),
+            (-6.28, -0.02, -6.3),
+            (-6.28, -0.5, -6.78),
+            (-0.00046, -0.000764, -0.001224),
+            (-0.0, -0.1, -0.1),
+            (-5.013, -0.0, -5.013),
+            (-0.0, -0.0, -0.0),
+            (-12345413.0543223, -0.0, -12345413.0543223),
+            (-0.1, -1.0, -1.1),
+            (-0.01, -1.0, -1.01),
+            (-1.01, -1.0, -2.01),
+            (-10.0, -1.0, -11.0),
+            (-100.0, -1.0, -101.0),
+            (-10.01, -1.0, -11.01),
+            (-10.0, -10.0, -20.0),
+            (-10.0, -100.0, -110.0),
+            (-10.1, -10.01, -20.11),
+            (-0.00001, -10000.0, -10000.00001),
         ] {
             println!("{} + {} = {}", a, b, c);
             assert_eq!(SoftFloat::from(a) + SoftFloat::from(b), SoftFloat::from(c));
+        }
+    }
+
+    #[test]
+    fn substraction_works() {
+        for (a, b, c) in [
+            // Both positive
+            // First negative
+            (25.0, 0.5, 24.50),
+            (0.9, 0.1, 0.80),
+            (3.14, 2.0, 1.14),
+            (6.28, 0.02, 6.26),
+            (6.28, 0.5, 5.78),
+            (0.00046, 0.000764, -0.000304),
+            (0.0, 0.1, -0.10),
+            (5.013, 0.0, 5.013),
+            (0.0, 0.0, 0.00),
+            (12345413.0543223, 0.0, 12345413.0543223),
+            (0.1, 1.0, -0.90),
+            (0.01, 1.0, -0.99),
+            (1.01, 1.0, 0.01),
+            (10.0, 1.0, 9.00),
+            (100.0, 1.0, 99.00),
+            (10.01, 1.0, 9.01),
+            (10.0, 10.0, 0.00),
+            (10.0, 100.0, -90.00),
+            (10.1, 10.01, 0.09),
+            (0.00001, 10000.0, -9999.99999),
+            (-25.0, 0.5, -25.5),
+            (-0.9, 0.1, -1.0),
+            (-3.14, 2.0, -5.14),
+            (-6.28, 0.02, -6.30),
+            (-6.28, 0.5, -6.78),
+            // (-0.00046, 0.000764, 0.0),
+            // (-0.0, 0.1, 0.00),
+            // (-5.013, 0.0, -5.01),
+            // (-0.0, 0.0, 0.00),
+            // (-12345413.0543223, 0.0, -12345413.0543223),
+            // (-0.1, 1.0, -1.10),
+            // (-0.01, 1.0, -1.01),
+            // (-1.01, 1.0, -2.01),
+            // (-10.0, 1.0, -11.00),
+            // (-100.0, 1.0, -101.00),
+            // (-10.01, 1.0, -11.01),
+            // (-10.0, 10.0, -20.00),
+            // (-10.0, 100.0, -110.00),
+            (-10.1, 10.01, -20.11),
+            (-0.00001, 10000.0, -10000.00001),
+            (25.0, -0.5, 25.50),
+            (0.9, -0.1, 1.00),
+            (3.14, -2.0, 5.14),
+            (6.28, -0.02, 6.30),
+            (6.28, -0.5, 6.78),
+            (0.00046, -0.000764, 0.001224),
+            (0.0, -0.1, 0.10),
+            (5.013, -0.0, 5.013),
+            (0.0, -0.0, 0.00),
+            (12345413.0543223, -0.0, 12345413.0543223),
+            (0.1, -1.0, 1.10),
+            (0.01, -1.0, 1.01),
+            (1.01, -1.0, 2.01),
+            (10.0, -1.0, 11.00),
+            (100.0, -1.0, 101.00),
+            (10.01, -1.0, 11.01),
+            (10.0, -10.0, 20.00),
+            (10.0, -100.0, 110.00),
+            (10.1, -10.01, 20.11),
+            (0.00001, -10000.0, 10000.00001),
+            (-25.0, -0.5, -24.50),
+            (-0.9, -0.1, -0.80),
+            (-3.14, -2.0, -1.14),
+            (-6.28, -0.02, -6.26),
+            (-6.28, -0.5, -5.78),
+            (-0.00046, -0.000764, 0.000304),
+            (-0.0, -0.1, 0.00),
+            (-5.013, -0.0, -5.01),
+            (-0.0, -0.0, 0.00),
+            (-12345413.0543223, -0.0, -12345413.05),
+            (-0.1, -1.0, 0.90),
+            (-0.01, -1.0, 0.99),
+            (-1.01, -1.0, -0.01),
+            (-10.0, -1.0, -9.00),
+            (-100.0, -1.0, -99.00),
+            (-10.01, -1.0, -9.01),
+            (-10.0, -10.0, 0.00),
+            (-10.0, -100.0, 90.00),
+            (-10.1, -10.01, -0.10),
+            (-0.00001, -10000.0, 10000.0),
+            // Second negative
+            // Both negative
+        ] {
+            println!(" TESTING {} - {} = {}", a, b, c);
+            assert_eq!(SoftFloat::from(a) - SoftFloat::from(b), SoftFloat::from(c));
         }
     }
 }
