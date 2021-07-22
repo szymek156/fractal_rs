@@ -11,6 +11,7 @@ use std::{
 extern crate crossbeam;
 extern crate num_cpus;
 use crate::quadruple::{self, Quad};
+use crate::soft_float::SoftFloat;
 use crossbeam::thread::scope;
 use rayon::prelude::*;
 use rug::{
@@ -195,6 +196,10 @@ impl Fractal {
         }
     }
 
+    //     pub fn mandelbrot_one_iter(&self) {
+    //         center: 304 304
+    // x0, y0: -0.7436438870371587 0.13182590420531204
+    //     }
     pub fn mandelbrot_raw(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
         let imgx = self.img_width;
         let imgy = self.img_height;
@@ -220,17 +225,44 @@ impl Fractal {
                 let mut y2 = 0.0;
                 let mut sum = 0.0;
 
+                let mut log = false;
+                if pixel_x == self.img_width / 2 && y_offset == self.img_height / 2 {
+                    println!("center: {} {}", pixel_x, y_offset);
+                    println!("x0, y0: {} {}", x0, y0);
+                    log = true;
+                }
+
                 while sum < 4.0 && iteration < self.limit {
+                    if log {
+                        println!("sum = {}", sum);
+                    }
+
                     y = (x + x) * y + y0;
+                    if log {
+                        println!("y {}", y);
+                    }
 
                     x = x2 - y2 + x0;
+                    if log {
+                        println!("x {}", x);
+                    }
 
                     x2 = x * x;
+                    if log {
+                        println!("x2 {}", x2);
+                    }
 
                     y2 = y * y;
+                    if log {
+                        println!("y2 {}", y2);
+                    }
 
                     sum = x2 + y2;
+                    if log {
+                        println!("SUM {}", sum);
+                    }
 
+                    break;
                     iteration += 1;
                 }
 
@@ -279,6 +311,82 @@ impl Fractal {
 
                     sum = x2 + y2;
 
+                    iteration += 1;
+                }
+
+                pixels[(pixel_y * self.img_height + pixel_x) as usize] =
+                    color_rainbow(iteration, self.limit);
+            }
+        }
+    }
+
+    pub fn mandelbrot_soft_float(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
+        let imgx = self.img_width;
+        let imgy = self.img_height;
+
+        let pinhole_center = SoftFloat::from(self.pinhole_size / 2.0);
+        let pinhole_size = SoftFloat::from(self.pinhole_size);
+
+        let origin_x = SoftFloat::from(self.origin_x);
+        let origin_y = SoftFloat::from(self.origin_y);
+
+        let four = SoftFloat::from(4.0);
+
+        for pixel_y in 0..height {
+            let y_offset = pixel_y + id * height;
+
+            for pixel_x in 0..self.img_width {
+                // TODO: whole self struct has to keep quad value
+                let x0 = origin_x + SoftFloat::from(pixel_x as f64 / imgx as f64) * pinhole_size
+                    - pinhole_center;
+                let y0 = origin_y + SoftFloat::from(y_offset as f64 / imgy as f64) * pinhole_size
+                    - pinhole_center;
+
+                let mut x = SoftFloat::from(0.0);
+                let mut y = SoftFloat::from(0.0);
+                let mut iteration = 0;
+
+                let mut x2 = SoftFloat::from(0.0);
+                let mut y2 = SoftFloat::from(0.0);
+                let mut sum = SoftFloat::from(0.0);
+
+                let mut log = false;
+                if pixel_x == self.img_width / 2 && y_offset == self.img_height / 2 {
+                    println!("center: {} {}", pixel_x, y_offset);
+                    println!("x0, y0: {} {}", x0, y0);
+                    log = true;
+                }
+
+                while sum < four && iteration < self.limit {
+                    if log {
+                        println!("sum = {}", sum);
+                    }
+
+                    y = (x + x) * y + y0;
+                    if log {
+                        println!("y {}", y);
+                    }
+
+                    x = x2 - y2 + x0;
+                    if log {
+                        println!("x {}", x);
+                    }
+
+                    x2 = x * x;
+                    if log {
+                        println!("x2 {}", x2);
+                    }
+
+                    y2 = y * y;
+                    if log {
+                        println!("y2 {}", y2);
+                    }
+
+                    sum = x2 + y2;
+                    if log {
+                        println!("SUM {}", sum);
+                    }
+                    break;
                     iteration += 1;
                 }
 
@@ -781,9 +889,16 @@ impl Fractal {
                         //     chunk,
                         // );
 
+                        self.mandelbrot_soft_float(
+                            id as u32,
+                            self.img_height / num_threads as u32,
+                            chunk,
+                        );
+
                         // self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
 
                         // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk);
+                        println!("!!!!!!!!!!!RAW!!!!!!!!!!!");
                         self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
                     })
                     .collect();
@@ -797,6 +912,8 @@ impl Fractal {
                 img_send.send(image).unwrap();
 
                 self.pinhole_size *= self.pinhole_step;
+
+                break;
             }
         });
 

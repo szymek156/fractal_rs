@@ -15,13 +15,20 @@ mod soft_float;
 fn main() {
     let fractal = Fractal {
         // For sake of simplicity, keep plane dimensions aligned to 64 bits
+        // img_width: 608,
+        // img_height: 608,
+        // origin_x: -0.7436438870371587,
+        // origin_y: 0.13182590420531198,
+        // pinhole_size: 0.0000000000004892965009859402,
+        // pinhole_step: 1.0,
+        // limit: 3800,
         img_width: 608,
         img_height: 608,
         origin_x: -0.7436438870371587,
         origin_y: 0.13182590420531198,
-        pinhole_size: 0.0000000000004892965009859402,
+        pinhole_size: 2.0,
         pinhole_step: 1.0,
-        limit: 3800,
+        limit: 200,
 
         // Zoom on quad
         // img_width: 608,

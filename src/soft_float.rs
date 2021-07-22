@@ -34,6 +34,7 @@ impl SoftFloat {
         if self.significand == 0 {
             // normalize zero
             self.exponent = 0;
+            self.positive = true;
         }
     }
 
@@ -49,6 +50,7 @@ impl SoftFloat {
 
         if a_exp < b_exp {
             let zeros = b_exp - a_exp;
+            println!("a_exp {}, b_exp {}, zeros {}", a_exp, b_exp, zeros);
             self.significand *= 10u64.pow(zeros as u32);
         } else if a_exp > b_exp {
             let zeros = a_exp - b_exp;
@@ -87,7 +89,7 @@ impl From<f64> for SoftFloat {
         // TODO: it's not perfect but enough for now
         let mut normalized = a;
 
-        println!("converting {}", a);
+        //println!("converting {}", a);
 
         if normalized < 0.0 {
             positive = false;
@@ -101,7 +103,7 @@ impl From<f64> for SoftFloat {
         // But that solves many issues when math is used to get decimal point position
         let normalized_str = format!("{}", normalized);
 
-        println!("normalized {}", normalized);
+        //println!("normalized {}", normalized);
 
         let parts: Vec<_> = normalized_str.split('.').collect();
         if parts.len() > 1 {
@@ -117,7 +119,7 @@ impl From<f64> for SoftFloat {
             significand,
         };
 
-        println!("from float: {} {:?}", a, result);
+        //println!("from float: {} {:?}", a, result);
 
         result
     }
@@ -230,17 +232,34 @@ impl Mul for SoftFloat {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
+        // println!("Mul a {}, b {}", self, rhs);
+
         let positive = self.positive == rhs.positive;
         let mut exponent = self.exponent + rhs.exponent;
-        // Will panic in case of overflow - in debug, what about release?
-        let mut significand = self.significand * rhs.significand;
+        // Will panic in case of overflow - in debug, in release returns some crap
+
+        // try to multiply, if res > u64 max, divide by 10 until >, decrement exponent
+        // TODO: this requires bigger buffer, is there a way, to avoid that?
+        let mut tmp = self.significand as u128 * rhs.significand as u128;
+
+        // TODO: maybe truncate to bigger exponent of those two?
+        while tmp > u64::MAX as u128 {
+            tmp /= 10;
+            exponent += 1;
+        }
+
+        // println!("tmp {}", tmp);
+        let mut significand = tmp as u64; 
+
+        // println!("self.exponent {}, exponent {}", self.exponent, exponent);
+        // println!("self.significand {} significand {}", self.significand, significand);
 
         let mut res = SoftFloat {
             positive,
             exponent,
             significand,
         };
-
+    
         res.remove_trailing_zeros();
 
         res
@@ -264,6 +283,15 @@ impl PartialOrd for SoftFloat {
             }
 
             let a_split = 10u64.pow(a.exponent.abs() as u32);
+            if a_split == 0 {
+                // TODO: Q&D, forget it
+                return Some(Ordering::Less);
+                // //println!("WTF: a={:?}, b={:?}", a, b);
+                // //println!("a.exp.abs {}", a.exponent.abs());
+                // //println!("a.exp.abs as u32 {}", a.exponent.abs() as u32);
+                // // WHY THE FUCK it returns 0
+                // //println!("10^exp {}", 10u64.pow(a.exponent.abs() as u32));
+            }
             let a_whole = a.significand / a_split;
             let mut a_fraction = a.significand % a_split;
             // TODO: fix that later
@@ -276,7 +304,7 @@ impl PartialOrd for SoftFloat {
             let b_fraction_len = format!("{}", b_fraction).len() as i32;
             let mut b_norm_exp = b.exponent;
 
-            println!("a_fraction {} b_fraction {}", a_fraction, b_fraction);
+            //println!("a_fraction {} b_fraction {}", a_fraction, b_fraction);
 
             if a_fraction_len != b_fraction_len {
                 let zeros = (a_fraction_len - b_fraction_len).abs() as u32;
@@ -292,48 +320,48 @@ impl PartialOrd for SoftFloat {
                 }
             }
 
-            println!("Comparing {:?} with {:?}", a, b);
-            println!("a_whole {} b_whole {}", a_whole, b_whole);
-            println!(
-                "a_fraction normalized {} b_fraction normalized {}",
-                a_fraction, b_fraction
-            );
+            //println!("Comparing {:?} with {:?}", a, b);
+            //println!("a_whole {} b_whole {}", a_whole, b_whole);
+            //println!(
+                // "a_fraction normalized {} b_fraction normalized {}",
+                // a_fraction, b_fraction
+            // );
 
             if a_whole == b_whole {
-                println!("a_whole == b_whole");
+                //println!("a_whole == b_whole");
                 if a_fraction == b_fraction {
-                    println!("a_fraction == b_fraction");
+                    //println!("a_fraction == b_fraction");
                     if a_norm_exp == b_norm_exp {
-                        println!("a.exponent == b.exponent");
+                        //println!("a.exponent == b.exponent");
                         return Some(Ordering::Equal);
                     } else {
-                        println!("a.exponent != b.exponent");
+                        //println!("a.exponent != b.exponent");
                         return Some(a.exponent.cmp(&b.exponent));
                     }
                 } else if a_fraction < b_fraction {
-                    println!("a_fraction < b_fraction");
+                    //println!("a_fraction < b_fraction");
                     if a.exponent == b.exponent {
-                        println!("a.exponent == b.exponent");
+                        //println!("a.exponent == b.exponent");
                         return Some(a_fraction.cmp(&b_fraction));
                     } else {
-                        println!("a.exponent != b.exponent");
+                        //println!("a.exponent != b.exponent");
                         return Some(a.exponent.cmp(&b.exponent));
                     }
                 } else
                 /* fraction_a > fraction_b */
                 {
-                    println!("a_fraction > b_fraction");
+                    //println!("a_fraction > b_fraction");
                     if a_norm_exp == b_norm_exp {
-                        println!("a.exponent == b.exponent");
+                        //println!("a.exponent == b.exponent");
                         return Some(a_fraction.cmp(&b_fraction));
                     } else {
-                        println!("a.exponent != b.exponent");
+                        //println!("a.exponent != b.exponent");
                         // here
                         return Some(a.exponent.cmp(&b.exponent));
                     }
                 }
             } else {
-                println!("a_whole == b_whole");
+                //println!("a_whole == b_whole");
                 return Some(a_whole.cmp(&b_whole));
             }
         } else {
@@ -668,7 +696,7 @@ mod tests {
             (-10.1, -10.01, -20.11),
             (-0.00001, -10000.0, -10000.00001),
         ] {
-            println!("{} + {} = {}", a, b, c);
+            //println!("{} + {} = {}", a, b, c);
             assert_eq!(SoftFloat::from(a) + SoftFloat::from(b), SoftFloat::from(c));
         }
     }
@@ -744,10 +772,10 @@ mod tests {
             (-6.28, -0.02, -6.26),
             (-6.28, -0.5, -5.78),
             (-0.00046, -0.000764, 0.000304),
-            (-0.0, -0.1, 0.00),
-            (-5.013, -0.0, -5.01),
+            (-0.0, -0.1, 0.1),
+            (-5.013, -0.0, -5.013),
             (-0.0, -0.0, 0.00),
-            (-12345413.0543223, -0.0, -12345413.05),
+            (-12345413.0543223, -0.0, -12345413.0543223),
             (-0.1, -1.0, 0.90),
             (-0.01, -1.0, 0.99),
             (-1.01, -1.0, -0.01),
@@ -756,13 +784,37 @@ mod tests {
             (-10.01, -1.0, -9.01),
             (-10.0, -10.0, 0.00),
             (-10.0, -100.0, 90.00),
-            (-10.1, -10.01, -0.10),
-            (-0.00001, -10000.0, 10000.0),
+            (-10.1, -10.01, -0.09),
+            (-0.00001, -10000.0, 9999.99999),
             // Second negative
             // Both negative
         ] {
-            println!(" TESTING {} - {} = {}", a, b, c);
+            //println!(" TESTING {} - {} = {}", a, b, c);
             assert_eq!(SoftFloat::from(a) - SoftFloat::from(b), SoftFloat::from(c));
         }
     }
+
+    #[test]
+    fn fixing_fractal_mul_overflow() {
+        let x = SoftFloat::from(-0.7436438870371587);
+        println!("x = {}", x);
+        let x2 = SoftFloat::from(0.5530062307277344);
+        println!("x2 = {}", x2);
+
+        assert_eq!(x*x, x2);       
+    }
+
+    #[test]
+    fn fixing_fractal_expand_overflow() {
+        //x2 0.5530062307277344492
+        let x2 = SoftFloat {positive: true, exponent: -19, significand: 5530062307277344492};
+
+        //y2 0.017378069019548090773
+        let y2 = SoftFloat {positive: true, exponent: -21, significand: 17378069019548090773};
+
+        let sum = SoftFloat::from(0.5703842997472824);
+
+        assert_eq!(x2 + y2, sum);
+    }
+
 }
