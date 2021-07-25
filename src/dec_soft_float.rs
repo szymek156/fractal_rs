@@ -1,24 +1,24 @@
-//! Attemp to create a custom floating type for fractal
+//! Attempt to create a custom floating type for fractal
 //! My very own idea, I am aware of IEEE754, but I decided
 //! to not use it. I wanted to have it human readable,
 //! so decided to have numbers represented in base 10.
-//! Which is horrible for perfomance, instead of bitshifts,
+//! Which is horrible for performance, instead of bitshifts,
 //! you need to divide, or multiply by 10.
-//! There is no normalization, makes reprezentation reading
+//! There is no normalization, makes representation reading
 //! very easy. Since, no normalization, exponent can hold only
 //! negative values, one bit saved!.
-//! I struggled with comparsion of numbers, code is ridiciously
+//! I struggled with comparison of numbers, code is ridiculously
 //! complex, turned out normalization would simplify things a lot.
-//! This version is not something will revoultionize the world.
+//! This version is not something will revolutionize the world.
 //! But I achieved my goal - implement own implementation of float.
-//! It's horrible in performance, complex in comparsion, and suffers
+//! It's horrible in performance, complex in comparison, and suffers
 //! in multiple places by integer overflow. But hey, it works!
 //! Fractal renders, as expected.
 //! Knowing how slow it is, I convinced myself to finally recall, how
 //! exactly IEE 754 standard looks like. Next step would be to implement this one.
 //! To avoid scope creep, I will probably use naive implementation of multiplication.
 //! And leave more fancy options for some time in the future. I've spent on this
-//! Implementation way more time than I should. So farewell, and start from the begining!
+//! Implementation way more time than I should. So farewell, and start from the beginning!
 
 use std::cmp::Ordering;
 use std::fmt;
