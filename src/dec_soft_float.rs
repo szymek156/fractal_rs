@@ -1,4 +1,24 @@
 //! Attemp to create a custom floating type for fractal
+//! My very own idea, I am aware of IEEE754, but I decided
+//! to not use it. I wanted to have it human readable,
+//! so decided to have numbers represented in base 10.
+//! Which is horrible for perfomance, instead of bitshifts,
+//! you need to divide, or multiply by 10.
+//! There is no normalization, makes reprezentation reading
+//! very easy. Since, no normalization, exponent can hold only
+//! negative values, one bit saved!.
+//! I struggled with comparsion of numbers, code is ridiciously
+//! complex, turned out normalization would simplify things a lot.
+//! This version is not something will revoultionize the world.
+//! But I achieved my goal - implement own implementation of float.
+//! It's horrible in performance, complex in comparsion, and suffers
+//! in multiple places by integer overflow. But hey, it works!
+//! Fractal renders, as expected.
+//! Knowing how slow it is, I convinced myself to finally recall, how
+//! exactly IEE 754 standard looks like. Next step would be to implement this one.
+//! To avoid scope creep, I will probably use naive implementation of multiplication.
+//! And leave more fancy options for some time in the future. I've spent on this
+//! Implementation way more time than I should. So farewell, and start from the begining!
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -50,11 +70,33 @@ impl SoftFloat {
 
         if a_exp < b_exp {
             let zeros = b_exp - a_exp;
-            println!("a_exp {}, b_exp {}, zeros {}", a_exp, b_exp, zeros);
-            self.significand *= 10u64.pow(zeros as u32);
+            // println!("a_exp {}, b_exp {}, zeros {}", a_exp, b_exp, zeros);
+            let to_expand = 10u64.pow(zeros as u32);
+
+            match self.significand.checked_mul(to_expand) {
+                Some(res) => {
+                    self.significand = res;
+                }
+                None => {
+                    // Multiplication caused an overflow, shrink other element
+                    b.significand /= to_expand;
+                    b.exponent += zeros;
+                }
+            }
         } else if a_exp > b_exp {
             let zeros = a_exp - b_exp;
-            b.significand *= 10u64.pow(zeros as u32);
+            let to_expand = 10u64.pow(zeros as u32);
+
+            match b.significand.checked_mul(to_expand) {
+                Some(res) => {
+                    b.significand = res;
+                }
+                None => {
+                    // Multiplication caused an overflow, shrink other element
+                    self.significand /= to_expand;
+                    self.exponent += zeros;
+                }
+            }
         }
     }
 }
@@ -145,10 +187,34 @@ impl Add for SoftFloat {
         }
 
         // Both positive, or both negative
-        self.expand_significand_to(&mut rhs);
+        // self.expand_significand_to(&mut rhs);
+        let a_exp = self.exponent.abs();
+        let b_exp = rhs.exponent.abs();
+        let mut significand: u128 = self.significand as u128;
+        let mut other_sig = rhs.significand as u128;
 
-        let significand = self.significand + rhs.significand;
-        let exponent = self.exponent.min(rhs.exponent);
+        if a_exp < b_exp {
+            let zeros = b_exp - a_exp;
+            // println!("a_exp {}, b_exp {}, zeros {}", a_exp, b_exp, zeros);
+            significand *= 10u128.pow(zeros as u32);
+        } else if a_exp > b_exp {
+            let zeros = a_exp - b_exp;
+            significand = rhs.significand as u128;
+            significand *= 10u128.pow(zeros as u32);
+            other_sig = self.significand as u128;
+        }
+
+        significand += other_sig;
+
+        let mut exp_short = 0;
+        while significand > u64::MAX as u128 {
+            significand /= 10;
+
+            exp_short += 1;
+        }
+
+        let significand = significand as u64;
+        let exponent = self.exponent.min(rhs.exponent) + exp_short;
         let positive = self.positive && rhs.positive;
 
         let mut res = Self {
@@ -208,7 +274,9 @@ impl Sub for SoftFloat {
             positive = if !self.positive && !rhs.positive {
                 // -25 - -0.5 = -24.5
                 false
-            } else /* both positive, other cases handled at the begining */ {
+            } else
+            /* both positive, other cases handled at the begining */
+            {
                 // +6 - +4 = 2
                 true
             };
@@ -249,7 +317,7 @@ impl Mul for SoftFloat {
         }
 
         // println!("tmp {}", tmp);
-        let mut significand = tmp as u64; 
+        let mut significand = tmp as u64;
 
         // println!("self.exponent {}, exponent {}", self.exponent, exponent);
         // println!("self.significand {} significand {}", self.significand, significand);
@@ -259,7 +327,7 @@ impl Mul for SoftFloat {
             exponent,
             significand,
         };
-    
+
         res.remove_trailing_zeros();
 
         res
@@ -323,8 +391,8 @@ impl PartialOrd for SoftFloat {
             //println!("Comparing {:?} with {:?}", a, b);
             //println!("a_whole {} b_whole {}", a_whole, b_whole);
             //println!(
-                // "a_fraction normalized {} b_fraction normalized {}",
-                // a_fraction, b_fraction
+            // "a_fraction normalized {} b_fraction normalized {}",
+            // a_fraction, b_fraction
             // );
 
             if a_whole == b_whole {
@@ -696,7 +764,7 @@ mod tests {
             (-10.1, -10.01, -20.11),
             (-0.00001, -10000.0, -10000.00001),
         ] {
-            //println!("{} + {} = {}", a, b, c);
+            // println!("{} + {} = {}", a, b, c);
             assert_eq!(SoftFloat::from(a) + SoftFloat::from(b), SoftFloat::from(c));
         }
     }
@@ -801,20 +869,27 @@ mod tests {
         let x2 = SoftFloat::from(0.5530062307277344);
         println!("x2 = {}", x2);
 
-        assert_eq!(x*x, x2);       
+        assert_eq!(x * x, x2);
     }
 
     #[test]
     fn fixing_fractal_expand_overflow() {
         //x2 0.5530062307277344492
-        let x2 = SoftFloat {positive: true, exponent: -19, significand: 5530062307277344492};
+        let x2 = SoftFloat {
+            positive: true,
+            exponent: -19,
+            significand: 5530062307277344492,
+        };
 
         //y2 0.017378069019548090773
-        let y2 = SoftFloat {positive: true, exponent: -21, significand: 17378069019548090773};
+        let y2 = SoftFloat {
+            positive: true,
+            exponent: -21,
+            significand: 17378069019548090773,
+        };
 
         let sum = SoftFloat::from(0.5703842997472824);
 
         assert_eq!(x2 + y2, sum);
     }
-
 }

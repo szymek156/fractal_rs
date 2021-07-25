@@ -350,43 +350,43 @@ impl Fractal {
                 let mut y2 = SoftFloat::from(0.0);
                 let mut sum = SoftFloat::from(0.0);
 
-                let mut log = false;
-                if pixel_x == self.img_width / 2 && y_offset == self.img_height / 2 {
-                    println!("center: {} {}", pixel_x, y_offset);
-                    println!("x0, y0: {} {}", x0, y0);
-                    log = true;
-                }
+                // let mut log = false;
+                // if pixel_x == self.img_width / 2 && y_offset == self.img_height / 2 {
+                //     println!("center: {} {}", pixel_x, y_offset);
+                //     println!("x0, y0: {} {}", x0, y0);
+                //     log = true;
+                // }
 
                 while sum < four && iteration < self.limit {
-                    if log {
-                        println!("sum = {}", sum);
-                    }
+                    // if log {
+                    //     println!("sum = {}", sum);
+                    // }
 
                     y = (x + x) * y + y0;
-                    if log {
-                        println!("y {}", y);
-                    }
+                    // if log {
+                    //     println!("y {}", y);
+                    // }
 
                     x = x2 - y2 + x0;
-                    if log {
-                        println!("x {}", x);
-                    }
+                    // if log {
+                    //     println!("x {}", x);
+                    // }
 
                     x2 = x * x;
-                    if log {
-                        println!("x2 {}", x2);
-                    }
+                    // if log {
+                    //     println!("x2 {}", x2);
+                    // }
 
                     y2 = y * y;
-                    if log {
-                        println!("y2 {}", y2);
-                    }
+                    // if log {
+                    //     println!("y2 {}", y2);
+                    // }
 
                     sum = x2 + y2;
-                    if log {
-                        println!("SUM {}", sum);
-                    }
-                    break;
+                    // if log {
+                    //     println!("SUM {}", sum);
+                    // }
+                    // break;
                     iteration += 1;
                 }
 
@@ -898,8 +898,8 @@ impl Fractal {
                         // self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
 
                         // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk);
-                        println!("!!!!!!!!!!!RAW!!!!!!!!!!!");
-                        self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
+                        // println!("!!!!!!!!!!!RAW!!!!!!!!!!!");
+                        // self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
                     })
                     .collect();
 
@@ -913,7 +913,7 @@ impl Fractal {
 
                 self.pinhole_size *= self.pinhole_step;
 
-                break;
+                // break;
             }
         });
 
