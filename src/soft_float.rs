@@ -2,14 +2,14 @@
 //! https://ciechanow.ski/exposing-floating-point/
 
 use std::cmp::Ordering;
-use std::{fmt, mem};
 use std::ops::{Add, Mul, Sub};
+use std::{fmt, mem};
 
 use rug::ops::Pow;
 
 // Lets try binary32 first.
 // exp range [-126; 127]
-const BIAS: i32 = 127;
+const BIAS: u32 = 127;
 const EXPONENT_WIDTH: u32 = 8;
 const EXPONENT_MASK: u32 = 0xFF;
 // 24, with implicit bit
@@ -28,7 +28,7 @@ impl SoftFloat {
     /// When the biased exponent is set to 0, the exponent is interpreted as −126
     /// (not −127 despite the bias), and the leading digit is assumed to be 0.
     pub fn is_subnormal(&self) -> bool {
-        self.exponent == 0
+        self.exponent == 0 && self.significand != 0
     }
 
     /// A float number with maximum biased exponent value and all zeros in significand
@@ -41,6 +41,14 @@ impl SoftFloat {
         self.negative && self.exponent == EXPONENT_MASK && self.significand == 0
     }
 
+    pub fn is_neg_zero(&self) -> bool {
+        self.negative && self.exponent == 0 && self.significand == 0
+    }
+
+    pub fn is_pos_zero(&self) -> bool {
+        !self.negative && self.exponent == 0 && self.significand == 0
+    }
+
     ///  A float number with maximum biased exponent value and non-zero
     /// significand is interpreted as NaN – Not a Number:
     pub fn is_nan(&self) -> bool {
@@ -50,10 +58,45 @@ impl SoftFloat {
     /// Gets unbiased exponent
     pub fn get_exponent(&self) -> i32 {
         if self.is_subnormal() {
-            return -BIAS + 1;
+            return -(BIAS as i32)  + 1;
         }
 
-        self.exponent as i32 - BIAS
+        self.exponent as i32 - BIAS as i32
+    }
+
+    pub fn pos_inf() -> Self {
+        Self {
+            negative: false,
+            exponent: EXPONENT_MASK,
+            significand: 0,
+        }
+    }
+
+    pub fn neg_inf() -> Self {
+        Self {
+            negative: true,
+            exponent: EXPONENT_MASK,
+            significand: 0,
+        }
+    }
+
+    pub fn normalize(&mut self) {
+        if self.is_nan() || self.is_neg_infinity() || self.is_pos_infinity() {
+            // Nothing to normalize
+            return;
+        }
+
+        if self.is_subnormal() {
+            todo!()
+        }
+
+        while self.significand != 0 {
+            // Does this overflow?
+            self.significand >>= 1;
+            self.exponent
+            
+        }
+
     }
 
     // TODO: Handle NaNs
@@ -132,12 +175,54 @@ impl Mul for SoftFloat {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
-        todo!();
+        let negative = self.negative ^ rhs.negative;
+        // TODO: checked overflow may become handy
+        // a_exp + b_exp = a_exp - bias + b_exp - bias = a_exp + b_exp - 2bias
+        // => a_exp + b_exp -2bias + bias == added real exponents and biased
+        let exponent = self.exponent + rhs.exponent - BIAS;
+
+        if exponent > EXPONENT_MASK {
+            if negative {
+                return SoftFloat::neg_inf();
+            } else {
+                return SoftFloat::pos_inf();
+            }
+        }
+
+        // TODO: do biasing?
+        // 4 + 5 = 4 - 127 + 5 - 127 = 9 - 254 = -245
+        // 
+        let mut a_sig = self.significand;
+        if !self.is_subnormal() {
+            a_sig |= 1 << SIGNIFICAND_WIDTH;
+        }
+
+        // TODO: make sure mul of mixed subnormal and normal works
+        let mut b_sig = rhs.significand;
+        if !rhs.is_subnormal() {
+            b_sig |= 1 << SIGNIFICAND_WIDTH;
+        }
+        // As for now (32bit float implementation) u64 buffer is more than
+        // required to keep the resulting value.
+        let significand = (a_sig * b_sig) >> SIGNIFICAND_WIDTH;
+
+        // TODO: normalize result
+        let mut res = SoftFloat {
+            negative,
+            exponent,
+            significand,
+        };
+
+        res.normalize();
+
+
+        res
     }
 }
 
 impl PartialOrd for SoftFloat {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // TODO: check for submormals, inf's, nan's
         // Numbers are in normalized from, should be easy, eh?!
         if self.negative == other.negative {
             // Both positive, or negative
@@ -334,18 +419,18 @@ mod tests {
         let d = SoftFloat::from(-99999.99999f32);
         let e = SoftFloat::from(-99999.99998f32);
         let f = SoftFloat::from(-0.098f32);
-        
+
         // Positive numbers
         assert!(a < b);
         assert!(a == a);
         assert!(b > a);
         assert!(b > c);
         assert!(c < a);
-        
+
         // // Mixed numbers
         assert!(d < c);
         assert!(c > d);
-        
+
         // // Negative numbers
         assert!(f == f);
         assert!(e < f);
@@ -392,7 +477,7 @@ mod tests {
 
     #[test]
     fn multiplication_works() {
-        for (a, b, c) in [(0.00001, 10000.0, 0.1)] {
+        for (a, b, c) in [(0.00001f32, 10000.0f32, 0.1f32)] {
             assert_eq!(SoftFloat::from(a) * SoftFloat::from(b), SoftFloat::from(c));
         }
     }
