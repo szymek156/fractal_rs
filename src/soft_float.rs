@@ -58,7 +58,7 @@ impl SoftFloat {
     /// Gets unbiased exponent
     pub fn get_exponent(&self) -> i32 {
         if self.is_subnormal() {
-            return -(BIAS as i32)  + 1;
+            return -(BIAS as i32) + 1;
         }
 
         self.exponent as i32 - BIAS as i32
@@ -80,8 +80,7 @@ impl SoftFloat {
         }
     }
 
-    pub fn normalize(&mut self) {
-
+    pub fn normalize_mul(&mut self) {
         println!("normalizing {:?}", self);
 
         if self.is_nan() || self.is_neg_infinity() || self.is_pos_infinity() {
@@ -93,6 +92,19 @@ impl SoftFloat {
             todo!()
         }
 
+        // GRS - guard, round, sticky bits. They are the very first bits, just
+        // after overflow
+        const GRS_WIDTH: u32 = 3;
+        const GRS_MASK: u64 = 0x7;
+        let grs = (self.significand >> (SIGNIFICAND_WIDTH - GRS_WIDTH)) & GRS_MASK;
+        // As for now (32bit float implementation) u64 buffer is more than
+        // required to keep the resulting value.
+        // 0 in significand with implicit 1 is 8388608 in binary, 1 << 23,
+        // so two smallest values will ever be multiplied is 1 << 23 * 1 << 23,
+        // that results with 1 << 46. Shift back by width of significand ( >> 23)
+        // To have bits in correct place, from that place normalization can be done.
+        self.significand >>= SIGNIFICAND_WIDTH;
+
         // If there is anything outside 23 bits range - shift it
         // 1 is the implicit bit on 24th position
         // TODO: hope compiler hoists those values
@@ -100,13 +112,11 @@ impl SoftFloat {
             // Does this overflow?
             self.significand >>= 1;
             self.exponent += 1;
-            
         }
 
         // Make bit on 24th position implicit
         self.significand &= SIGNIFICAND_MASK as u64;
         // TODO: round to nearest, half to even
-
     }
 
     // TODO: Handle NaNs
@@ -201,7 +211,7 @@ impl Mul for SoftFloat {
 
         // TODO: do biasing?
         // 4 + 5 = 4 - 127 + 5 - 127 = 9 - 254 = -245
-        // 
+        //
         let mut a_sig = self.significand;
         if !self.is_subnormal() {
             a_sig |= 1 << SIGNIFICAND_WIDTH;
@@ -213,13 +223,7 @@ impl Mul for SoftFloat {
             b_sig |= 1 << SIGNIFICAND_WIDTH;
         }
 
-        // As for now (32bit float implementation) u64 buffer is more than
-        // required to keep the resulting value.
-        // 0 in significand with implicit 1 is 8388608 in binary, 1 << 23,
-        // so two smallest values will ever be multiplied is 1 << 23 * 1 << 23, 
-        // that results with 1 << 46. Shift back by width of significand ( >> 23)
-        // To have bits in correct place, from that place normalization can be done.
-        let significand = (a_sig * b_sig) >> SIGNIFICAND_WIDTH;
+        let significand = a_sig * b_sig;
 
         // TODO: normalize result
         let mut res = SoftFloat {
@@ -228,8 +232,7 @@ impl Mul for SoftFloat {
             significand,
         };
 
-        res.normalize();
-
+        res.normalize_mul();
 
         res
     }
