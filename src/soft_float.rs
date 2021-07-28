@@ -92,11 +92,15 @@ impl SoftFloat {
             todo!()
         }
 
-        // GRS - guard, round, sticky bits. They are the very first bits, just
+        // GRS - Guard, Round, Sticky bits. They are the very first bits, just
         // after overflow
+
+        // TODO: Sticky bit is actual: Logical OR of ALL other bits after Guard & R bits
         const GRS_WIDTH: u32 = 3;
-        const GRS_MASK: u64 = 0x7;
-        let grs = (self.significand >> (SIGNIFICAND_WIDTH - GRS_WIDTH)) & GRS_MASK;
+        const GRS_MASK: u64 = 0b111;
+        let mut grs = (self.significand >> (SIGNIFICAND_WIDTH - GRS_WIDTH)) & GRS_MASK;
+
+        println!("initial grs {:03b}", grs);
         // As for now (32bit float implementation) u64 buffer is more than
         // required to keep the resulting value.
         // 0 in significand with implicit 1 is 8388608 in binary, 1 << 23,
@@ -110,15 +114,48 @@ impl SoftFloat {
         // TODO: hope compiler hoists those values
         while (self.significand & !(SIGNIFICAND_MASK as u64)) > (1 << SIGNIFICAND_WIDTH) {
             // Does this overflow?
+            // Move grs by one, get guard bit from significand
+            grs >>= 1;
+            grs |= (self.significand & 1) << 2;
+
+            println!("Shifting significand grs {:b}", grs);
             self.significand >>= 1;
             self.exponent += 1;
         }
 
         // Make bit on 24th position implicit
         self.significand &= SIGNIFICAND_MASK as u64;
-        // TODO: round to nearest, half to even
+
+        if grs & 0b100 != 0 {
+            if grs & 0b11  == 0 {
+                // 100, exactly half way, round to even
+                if self.significand & 0b1 == 1 {
+                    // mantissa is odd, add 1
+                    self.significand += 1;
+                } // else mantissa is even, noop
+            } else {
+                // 101, 110, 111, more than half way, round up - add 1
+
+                // TODO: in case of overflow reset significand, and increase exponent?
+                // GRS - Action
+                // 0xx - round down = do nothing (x means any bit value, 0 or 1)
+                // 100 - this is a tie: round up if the mantissa's bit just before G is 1, else round down=do nothing
+                // 101 - round up
+                // 110 - round up
+                // 111 - round up
+
+                // Rounding up is done by adding 1 to the mantissa in the mantissa's least significant bit position just before G.
+                // If the mantissa overflows (its 23 least significant bits that you will store become zeroes), you have to add 1
+                // to the exponent. If the exponent overflows, you set the number to +infinity or -infinity depending on the number's sign.
+                // In the case of a tie, you add 1 to the mantissa if the mantissa is odd and you add nothing if it's even.
+                // That's what makes the result rounded to the nearest even value.
+                self.significand += 1
+
+            }
+        } // 0xx Round down - discard GRS bits
     }
 
+    // 1.1100,0000,0000,0000,0000,00112 * 22
     // TODO: Handle NaNs
     // The easiest way to obtain NaN directly is by using NAN macro.
     // In practice though, NaN arises in the following set of operations:
@@ -495,6 +532,8 @@ mod tests {
 
     #[test]
     fn multiplication_works() {
+        // TODO: GRS, round to even is implemented, but still returns invalid value,
+        // looks like hardware uses more guard bits - how to do that?
         for (a, b, c) in [(0.00001f32, 10000.0f32, 0.1f32)] {
             assert_eq!(SoftFloat::from(a) * SoftFloat::from(b), SoftFloat::from(c));
         }
