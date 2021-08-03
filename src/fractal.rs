@@ -10,6 +10,7 @@ use std::{
 };
 extern crate crossbeam;
 extern crate num_cpus;
+use crate::main;
 use crate::quadruple::{self, Quad};
 use crate::soft_float::SoftFloat;
 use crossbeam::thread::scope;
@@ -31,11 +32,20 @@ use std::arch::x86_64::*;
 
 pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
 #[derive(Debug)]
+
+pub enum FineDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+#[derive(Debug)]
 pub enum Command {
     ZoomOut,
     ZoomIn,
     LessIterations,
     MoreIterations,
+    FineTune(FineDirection),
     ChangeOrigin(f64, f64),
     SetPOI(u32),
     GetState,
@@ -62,6 +72,15 @@ impl Fractal {
             Command::ZoomIn => self.pinhole_step -= 0.1,
             Command::LessIterations => self.limit -= if self.limit <= 200 { 0 } else { 200 },
             Command::MoreIterations => self.limit += 200,
+            Command::FineTune(dir) => {
+                let tune = self.pinhole_size * 0.15;
+                match dir {
+                    FineDirection::Up => self.origin_y += tune,
+                    FineDirection::Down => self.origin_y -= tune,
+                    FineDirection::Left => self.origin_x -= tune,
+                    FineDirection::Right => self.origin_x += tune,
+                }
+            }
             Command::ChangeOrigin(x, y) => {
                 let pinhole_center = self.pinhole_size / 2.0;
 
@@ -113,9 +132,13 @@ impl Fractal {
                     self.origin_y = -0.0012668963162883458;
                 }
                 9 => {
-                    self.origin_x = -1.2568840461035797;
-                    self.origin_y = 0.3796264149862358;
+                    // self.origin_x = -1.2568840461035797;
+                    // self.origin_y = 0.3796264149862358;
+
+                    self.origin_x = -1.6291627176190138;
+                    self.origin_y = -0.020224379647719847;
                 }
+
                 _ => (),
             },
             Command::GetState => {
@@ -883,21 +906,25 @@ impl Fractal {
                     .par_chunks_mut(chunk_size)
                     .enumerate()
                     .map(|(id, chunk)| {
-                        // self.mandelbrot_quad(
-                        //     id as u32,
-                        //     self.img_height / num_threads as u32,
-                        //     chunk,
-                        // );
-
-                        self.mandelbrot_soft_float(
+                        self.mandelbrot_quad(
                             id as u32,
                             self.img_height / num_threads as u32,
                             chunk,
                         );
 
+                        // self.mandelbrot_soft_float(
+                        //     id as u32,
+                        //     self.img_height / num_threads as u32,
+                        //     chunk,
+                        // );
+
                         // self.mandelbrot_rug(id as u32, self.img_height / num_threads as u32, chunk);
 
-                        // self.mandelbrot_simd_avx2(id as u32, self.img_height / num_threads as u32, chunk);
+                        // self.mandelbrot_simd_avx2(
+                        //     id as u32,
+                        //     self.img_height / num_threads as u32,
+                        //     chunk,
+                        // );
                         // println!("!!!!!!!!!!!RAW!!!!!!!!!!!");
                         // self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
                     })

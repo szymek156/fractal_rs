@@ -49,6 +49,10 @@ impl SoftFloat {
         !self.negative && self.exponent == 0 && self.significand == 0
     }
 
+    pub fn is_zero(&self) -> bool {
+        self.exponent == 0 && self.significand == 0
+    }
+
     ///  A float number with maximum biased exponent value and non-zero
     /// significand is interpreted as NaN – Not a Number:
     pub fn is_nan(&self) -> bool {
@@ -80,6 +84,14 @@ impl SoftFloat {
         }
     }
 
+    pub fn zero(negative: bool) -> Self {
+        Self {
+            negative: negative,
+            exponent: 0,
+            significand: 0,
+        }
+    }
+
     pub fn normalize_mul(&mut self) {
         println!("normalizing {:?}", self);
 
@@ -100,7 +112,6 @@ impl SoftFloat {
         const GRS_MASK: u64 = 0b111;
         let mut grs = (self.significand >> (SIGNIFICAND_WIDTH - GRS_WIDTH)) & GRS_MASK;
 
-        println!("initial grs {:03b}", grs);
         // As for now (32bit float implementation) u64 buffer is more than
         // required to keep the resulting value.
         // 0 in significand with implicit 1 is 8388608 in binary, 1 << 23,
@@ -127,7 +138,7 @@ impl SoftFloat {
         self.significand &= SIGNIFICAND_MASK as u64;
 
         if grs & 0b100 != 0 {
-            if grs & 0b11  == 0 {
+            if grs & 0b11 == 0 {
                 // 100, exactly half way, round to even
                 if self.significand & 0b1 == 1 {
                     // mantissa is odd, add 1
@@ -150,7 +161,6 @@ impl SoftFloat {
                 // In the case of a tie, you add 1 to the mantissa if the mantissa is odd and you add nothing if it's even.
                 // That's what makes the result rounded to the nearest even value.
                 self.significand += 1
-
             }
         } // 0xx Round down - discard GRS bits
     }
@@ -208,7 +218,8 @@ impl From<f32> for SoftFloat {
 
 impl From<f64> for SoftFloat {
     fn from(a: f64) -> Self {
-        todo!();
+        // SoftFloat::from(a as f32)
+        todo!()
     }
 }
 
@@ -216,10 +227,39 @@ impl Add for SoftFloat {
     type Output = Self;
 
     fn add(mut self, mut rhs: Self) -> Self {
-        todo!();
+        // TODO: ==0?
+        if self.exponent > 0 && rhs.exponent > 0 {
+            // 10^5 + 10^3
+        }
+
+        if self.exponent > rhs.exponent {
+            // 2 > -4
+            // 5 > 3
+            // TODO: operate on biased exponents?
+            // let gap = (self.exponent - rhs.exponent).abs();
+        }
+        todo!()
     }
 }
 
+//100000 + 1000
+// 0.0001 -> 1 * 10^-4
+// 500.0  -> 5 * 10^2
+// gap = 6
+
+// 500 0000 -> 5*10^6
+
+// 500 0000 +
+// 000 0001
+
+// 500. 0001 normalize
+// 5 000001 2
+
+// 0.99 -> 9.9 * 10^-1
+// 0.01 -> 1   * 10^-2
+
+// 99 (^2) + 1 = 100
+// 1 * 10^0
 impl Sub for SoftFloat {
     type Output = Self;
 
@@ -236,6 +276,11 @@ impl Mul for SoftFloat {
         // TODO: checked overflow may become handy
         // a_exp + b_exp = a_exp - bias + b_exp - bias = a_exp + b_exp - 2bias
         // => a_exp + b_exp -2bias + bias == added real exponents and biased
+
+        if self.is_zero() || rhs.is_zero() {
+            return Self::zero(negative);
+        }
+
         let exponent = self.exponent + rhs.exponent - BIAS;
 
         if exponent > EXPONENT_MASK {
@@ -532,10 +577,93 @@ mod tests {
 
     #[test]
     fn multiplication_works() {
-        // TODO: GRS, round to even is implemented, but still returns invalid value,
-        // looks like hardware uses more guard bits - how to do that?
-        for (a, b, c) in [(0.00001f32, 10000.0f32, 0.1f32)] {
-            assert_eq!(SoftFloat::from(a) * SoftFloat::from(b), SoftFloat::from(c));
+        for (a, b) in [
+            (0.00001f32, 10000.0f32),
+            (25.0f32, 0.5f32),
+            (0.9f32, 0.1f32),
+            (3.14f32, 2.0f32),
+            (6.28f32, 0.02f32),
+            (6.28f32, 0.5f32),
+            (0.00046f32, 0.000764f32),
+            (0.0f32, 0.1f32),
+            (5.013f32, 0.0f32),
+            (0.0f32, 0.0f32),
+            (12345413.0543223f32, 0.0f32),
+            (0.1f32, 1.0f32),
+            (0.01f32, 1.0f32),
+            (1.01f32, 1.0f32),
+            (10.0f32, 1.0f32),
+            (100.0f32, 1.0f32),
+            (10.01f32, 1.0f32),
+            (10.0f32, 10.0f32),
+            (10.0f32, 100.0f32),
+            (10.1f32, 10.01f32),
+            (0.00001f32, 10000.0f32),
+            (-25.0f32, 0.0f32),
+            (-0.9f32, 0.0f32),
+            (-3.14f32, 2.0f32),
+            (-6.28f32, 0.0f32),
+            (-6.28f32, 0.0f32),
+            (-0.00046f32, 0.0f32),
+            (-0.0f32, 0.0f32),
+            (-5.013f32, 0.0f32),
+            (-0.0f32, 0.0f32),
+            (-12345413.0543223f32, 0.0f32),
+            (-0.1f32, 1.0f32),
+            (-0.01f32, 1.0f32),
+            (-1.01f32, 1.0f32),
+            (-10.0f32, 1.0f32),
+            (-100.0f32, 1.0f32),
+            (-10.01f32, 1.0f32),
+            (-10.0f32, 10.0f32),
+            (-10.0f32, 100.0f32),
+            (-10.1f32, 10.0f32),
+            (-0.00001f32, 10000.0f32),
+            (25.0f32, -0.5f32),
+            (0.9f32, -0.1f32),
+            (3.14f32, -2.0f32),
+            (6.28f32, -0.02f32),
+            (6.28f32, -0.5f32),
+            (0.00046f32, -0.000764f32),
+            (0.0f32, -0.1f32),
+            (5.013f32, -0.0f32),
+            (0.0f32, -0.0f32),
+            (12345413.0543223f32, -0.0f32),
+            (0.1f32, -1.0f32),
+            (0.01f32, -1.0f32),
+            (1.01f32, -1.0f32),
+            (10.0f32, -1.0f32),
+            (100.0f32, -1.0f32),
+            (10.01f32, -1.0f32),
+            (10.0f32, -10.0f32),
+            (10.0f32, -100.0f32),
+            (10.1f32, -10.01f32),
+            (0.00001f32, -10000.0f32),
+            (-25.0f32, -0.0f32),
+            (-0.9f32, -0.0f32),
+            (-3.14f32, -2.0f32),
+            (-6.28f32, -0.0f32),
+            (-6.28f32, -0.0f32),
+            (-0.00046f32, -0.0f32),
+            (-0.0f32, -0.0f32),
+            (-5.013f32, -0.0f32),
+            (-0.0f32, -0.0f32),
+            (-12345413.0543223f32, -0.0f32),
+            (-0.1f32, -1.0f32),
+            (-0.01f32, -1.0f32),
+            (-1.01f32, -1.0f32),
+            (-10.0f32, -1.0f32),
+            (-100.0f32, -1.0f32),
+            (-10.01f32, -1.0f32),
+            (-10.0f32, -10.0f32),
+            (-10.0f32, -100.0f32),
+            (-10.1f32, -10.0f32),
+            (-0.00001f32, -10000.0f32),
+        ] {
+            assert_eq!(
+                SoftFloat::from(a) * SoftFloat::from(b),
+                SoftFloat::from(a * b)
+            );
         }
     }
 
@@ -563,7 +691,6 @@ mod tests {
             (10.0, 100.0, 110.0),
             (10.1, 10.01, 20.11),
             (0.00001, 10000.0, 10000.00001),
-            // First negative
             (-25.0, 0.5, -24.5),
             (-0.9, 0.1, -0.8),
             (-3.14, 2.0, -1.14),
@@ -584,7 +711,6 @@ mod tests {
             (-10.0, 100.0, 90.0),
             (-10.1, 10.01, -0.09),
             (-0.00001, 10000.0, 9999.99999),
-            // Second negative
             (25.0, -0.5, 24.5),
             (0.9, -0.1, 0.8),
             (3.14, -2.0, 1.14),
@@ -605,7 +731,6 @@ mod tests {
             (10.0, -100.0, -90.0),
             (10.1, -10.01, 0.09),
             (0.00001, -10000.0, -9999.99999),
-            // Both negative
             (-25.0, -0.5, -25.5),
             (-0.9, -0.1, -1.0),
             (-3.14, -2.0, -5.14),

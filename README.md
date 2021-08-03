@@ -6,6 +6,7 @@ This is a port to Rust of my implementation of rendering a Mandelbrot set writte
 * ```Left mouse click``` Centers view on given position
 * ```[``` Zoom out
 * ```]``` Zoom in
+* ```←↑↓→``` Fine tuning, moves the view by 10%
 * ```=``` Increase iterations
 * ```-``` Decrease iterations
 * ```1...9``` Set center of the window to some POI (6 is iteresting one)

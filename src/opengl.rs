@@ -1,4 +1,4 @@
-use crate::fractal::{Command, OutBuffer, Pipe};
+use crate::fractal::{Command, FineDirection, OutBuffer, Pipe};
 use glium::glutin::dpi::PhysicalPosition;
 use glium::glutin::event::{ElementState, MouseButton, VirtualKeyCode};
 use glium::index::NoIndices;
@@ -29,7 +29,7 @@ fn get_texture(
 
     let dimensions = fractal.dimensions();
 
-    let image = glium::texture::RawImage2d::from_raw_rgb(fractal.clone().into_raw(), dimensions);
+    let image = glium::texture::RawImage2d::from_raw_rgb(fractal.into_raw(), dimensions);
 
     let texture = glium::texture::Texture2d::new(display, image).unwrap();
 
@@ -114,6 +114,10 @@ fn handle_keyboard(key: VirtualKeyCode) -> Option<Command> {
         VirtualKeyCode::Key8 => Some(Command::SetPOI(8)),
         VirtualKeyCode::Key9 => Some(Command::SetPOI(9)),
         VirtualKeyCode::Space => Some(Command::GetState),
+        VirtualKeyCode::Up => Some(Command::FineTune(FineDirection::Up)),
+        VirtualKeyCode::Down => Some(Command::FineTune(FineDirection::Down)),
+        VirtualKeyCode::Left => Some(Command::FineTune(FineDirection::Left)),
+        VirtualKeyCode::Right => Some(Command::FineTune(FineDirection::Right)),
         _ => None,
     }
 }
@@ -196,7 +200,7 @@ pub fn run(pipe: Pipe) {
         }
 
         let next_frame_time =
-            std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
+            std::time::Instant::now() + std::time::Duration::from_nanos(50_000);
         *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
 
         if let Some(texture) = get_texture(&display, &pipe.img_rcv) {
