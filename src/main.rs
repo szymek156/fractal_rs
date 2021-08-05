@@ -8,6 +8,7 @@ extern crate glium;
 extern crate lazy_static;
 
 mod fractal;
+mod fractal_builder;
 mod opengl;
 mod quadruple;
 mod soft_float;
