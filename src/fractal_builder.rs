@@ -8,38 +8,6 @@ pub struct PoI<Floating> {
     pub limit: u32,
 }
 
-
-// Enum approach:
-// - Still unused type parameter, 'phantom' data is hidden in Julia(T)
-// - It also has to be initialized: Julia(Floating::from(4.4))
-// but contrary to phantom - it takes place
-// - But phantom can be used so point above may be irrelevant 
-// - match inside draw method has to be there - dispatching done by hand
-// - no heap allocation
-pub enum FractalEnum<T> {
-    NotSet,
-    Julia(T),
-    Mandelbrot(T),
-}
-
-impl<T> FractalEnum<T>
-where
-    T: From<f64>,
-{
-    fn draw(&self) {
-        match self {
-            FractalEnum::NotSet => todo!(),
-            FractalEnum::Julia(_) => todo!(),
-            FractalEnum::Mandelbrot(_) => FractalEnum::<T>::mandelbrot(),
-        }
-    }
-
-    fn mandelbrot() {
-        let some_var = T::from(4.0);
-        todo!()
-    }
-}
-
 // #[derive(Debug)]
 pub struct Fractal<Floating> {
     pub img_width: u32,
@@ -48,7 +16,6 @@ pub struct Fractal<Floating> {
     pub pinhole_step: Floating,
     pub poi: PoI<Floating>,
     pub fractal_function: Box<dyn FractalFunction>,
-    pub fractal_enum: FractalEnum<Floating>,
 }
 
 impl<Floating> Default for Fractal<Floating>
@@ -67,7 +34,6 @@ where
                 limit: 300,
             },
             fractal_function: Box::new(Mandelbrot::<Floating>(PhantomData)),
-            fractal_enum: FractalEnum::NotSet,
         }
     }
 }
@@ -107,11 +73,6 @@ where
         self
     }
 
-    pub fn mandelbrot_enum(mut self) -> Self {
-        self.fractal_enum = FractalEnum::Mandelbrot(Floating::from(6.9));
-
-        self
-    }
 }
 
 #[cfg(test)]
