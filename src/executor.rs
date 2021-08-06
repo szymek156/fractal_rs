@@ -51,7 +51,10 @@ pub enum ExecutorKind {
 /// img_rcv - for getting ready images of fractal
 /// cmd_send - for sending commands to the Executor, like change of PoI, etc.
 pub trait Executor<F: Floating> {
-    fn execute(self, context: Context<F>) -> Pipe;
+    // Note here, that self has a type... and it's Box<Self>
+    // It's a workaround for: https://users.rust-lang.org/t/how-to-move-self-when-using-dyn-trait/50123
+    // TODO: It would be really beneficial to exactly understand what the fuck happened here
+    fn execute(self : Box<Self>, context: Context<F>) -> Pipe;
 
 
     fn handle_command(&self, command: Command, context: &mut Context<F>) {
@@ -146,7 +149,7 @@ pub trait Executor<F: Floating> {
 pub struct Rayon;
 
 impl<F: Floating> Executor<F> for Rayon {
-    fn execute(self, context: Context<F>) -> Pipe {
+    fn execute(self : Box<Self>, context: Context<F>) -> Pipe {
         let (img_send, img_rcv) = sync_channel(1);
 
         let (cmd_send, cmd_rcv) = channel();

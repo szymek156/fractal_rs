@@ -41,7 +41,7 @@ pub struct Mandelbrot<F: Floating>(pub PhantomData<F>);
 
 impl<F: Floating> FractalFunction<F> for Mandelbrot<F> {
     fn draw(&self, poi: &PoI<F>) {
-        let _sample = poi.origin_x; //+ Floating::from(2.0);
+        let _sample = poi.origin_x + F::from(2.0);
 
         let _sample = F::from(6.9);
         todo!();

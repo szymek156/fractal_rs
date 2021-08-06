@@ -62,7 +62,7 @@ impl<F: Floating> Fractal<F> {
         self
     }
 
-    pub fn start(&self) -> Pipe {
+    pub fn start(self) -> Pipe {
         // TODO: add Rc? Or Arc?
         self.executor.execute(self.context)
     }
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn using_builder_pattern() {
-        let fractal = Fractal::<f64>::default()
+        let mut fractal = Fractal::<f64>::default()
             .mandelbrot()
             .with_poi(PoI::<f64> {
                 origin_x: -1.275160031112145,
