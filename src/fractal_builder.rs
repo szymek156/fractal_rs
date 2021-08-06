@@ -1,6 +1,9 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, rc::Rc};
 
-#[derive(Debug)]
+
+trait Floating = From<f64> + Copy + 'static;
+
+#[derive(Debug, Default)]
 pub struct PoI<Floating> {
     pub origin_x: Floating,
     pub origin_y: Floating,
@@ -18,22 +21,21 @@ pub struct Fractal<Floating> {
     pub fractal_function: Box<dyn FractalFunction>,
 }
 
-impl<Floating> Default for Fractal<Floating>
-where
-    Floating: From<f64> + 'static
+impl<F : Floating> Default for Fractal<F>
+
 {
     fn default() -> Self {
         Fractal {
             img_height: 608,
             img_width: 608,
-            pinhole_step: Floating::from(1.0),
+            pinhole_step: F::from(1.0),
             poi: PoI {
-                origin_x: Floating::from(0.0),
-                origin_y: Floating::from(0.0),
-                pinhole_size: Floating::from(4.0),
+                origin_x: F::from(0.0),
+                origin_y: F::from(0.0),
+                pinhole_size: F::from(4.0),
                 limit: 300,
             },
-            fractal_function: Box::new(Mandelbrot::<Floating>(PhantomData)),
+            fractal_function: Box::new(Mandelbrot::<F>{poi: None}),
         }
     }
 }
@@ -47,31 +49,31 @@ trait FractalFunction {
 // that I do not understand, and they were made illegal long time
 // ago. _marker is zero sized type, that pretends usage of Floating,
 // making compiler happy.
-struct Mandelbrot<Floating>(PhantomData<Floating>);
+struct Mandelbrot<F: Floating> {
+    pub poi : Option<PoI<F>>
+}
 
-impl<Floating> FractalFunction for Mandelbrot<Floating>
-where
-    Floating: From<f64>,
+impl<F : Floating> FractalFunction for Mandelbrot<F>
 {
     fn draw(&self) {
-        let sample = Floating::from(6.9);
+        let poi = self.poi.as_ref().unwrap();
+        let sample = poi.origin_x; //+ Floating::from(2.0);
+
+        let sample = F::from(6.9);
         todo!();
     }
 }
 
-impl<Floating> Fractal<Floating>
-where
-    Floating: From<f64> + 'static
+impl<F: Floating> Fractal<F>
 {
     pub fn mandelbrot(mut self) -> Self {
         
-        self.fractal_function = Box::new(Mandelbrot::<Floating>(PhantomData));
-        // Box::new(Mandelbrot {
-        //     _marker: PhantomData::<Floating>,
-        // });
+        self.fractal_function = Box::new(Mandelbrot::<F>{poi: None});
 
         self
     }
+
+    
 
 }
 
@@ -79,10 +81,6 @@ where
 mod tests {
     use super::*;
 
-    #[test]
-    fn create_fr() {
-        let m: Box<dyn FractalFunction> = Box::new(Mandelbrot::<f64>(PhantomData));
-    }
     #[test]
     fn using_builder_pattern() {
         let fractal = Fractal::<f64>::default().mandelbrot();

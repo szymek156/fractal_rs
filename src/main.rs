@@ -1,3 +1,4 @@
+#![feature(trait_alias)]
 #![feature(stdsimd)]
 use fractal::Fractal;
 
