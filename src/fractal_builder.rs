@@ -53,7 +53,7 @@ pub struct Fractal<Floating> {
 
 impl<Floating> Default for Fractal<Floating>
 where
-    Floating: From<f64> + 'static,
+    Floating: From<f64> + 'static
 {
     fn default() -> Self {
         Fractal {
@@ -66,9 +66,7 @@ where
                 pinhole_size: Floating::from(4.0),
                 limit: 300,
             },
-            fractal_function: Box::new(Mandelbrot::<Floating> {
-                _marker: PhantomData,
-            }),
+            fractal_function: Box::new(Mandelbrot::<Floating>(PhantomData)),
             fractal_enum: FractalEnum::NotSet,
         }
     }
@@ -83,9 +81,7 @@ trait FractalFunction {
 // that I do not understand, and they were made illegal long time
 // ago. _marker is zero sized type, that pretends usage of Floating,
 // making compiler happy.
-struct Mandelbrot<Floating> {
-    _marker: PhantomData<Floating>,
-}
+struct Mandelbrot<Floating>(PhantomData<Floating>);
 
 impl<Floating> FractalFunction for Mandelbrot<Floating>
 where
@@ -99,13 +95,14 @@ where
 
 impl<Floating> Fractal<Floating>
 where
-    // TODO: had to add lifetime parameter, because, it turns out, types can have lifetimes???
-    Floating: From<f64> + 'static,
+    Floating: From<f64> + 'static
 {
     pub fn mandelbrot(mut self) -> Self {
-        self.fractal_function = Box::new(Mandelbrot {
-            _marker: PhantomData::<Floating>,
-        });
+        
+        self.fractal_function = Box::new(Mandelbrot::<Floating>(PhantomData));
+        // Box::new(Mandelbrot {
+        //     _marker: PhantomData::<Floating>,
+        // });
 
         self
     }
@@ -123,9 +120,7 @@ mod tests {
 
     #[test]
     fn create_fr() {
-        let m: Box<dyn FractalFunction> = Box::new(Mandelbrot::<f64> {
-            _marker: PhantomData,
-        });
+        let m: Box<dyn FractalFunction> = Box::new(Mandelbrot::<f64>(PhantomData));
     }
     #[test]
     fn using_builder_pattern() {
