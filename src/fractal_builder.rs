@@ -1,5 +1,5 @@
-use crate::{executor::{Executor, ExecutorType, Rayon}, fractals::{Floating, FractalFunction, Mandelbrot, PoI}};
-use std::marker::PhantomData;
+use crate::{executor::{self, Executor, ExecutorKind, Rayon}, fractals::{Floating, FractalFunction, Mandelbrot, PoI}};
+use std::{borrow::Borrow, marker::PhantomData};
 
 // #[derive(Debug)]
 pub struct Fractal<F: Floating> {
@@ -42,13 +42,17 @@ impl<F: Floating> Fractal<F> {
     }
 
     /// This time use enum, because... why not
-    pub fn run_on(mut self, executor: ExecutorType) -> Self {
+    pub fn run_on(mut self, executor: ExecutorKind) -> Self {
         match  executor {
-            ExecutorType::SingleThread => todo!(),
-            ExecutorType::Rayon => self.executor = Box::new(Rayon),
+            ExecutorKind::SingleThread => todo!(),
+            ExecutorKind::Rayon => self.executor = Box::new(Rayon),
         }
 
         self
+     }
+
+     pub fn start(&self) {
+         self.executor.execute();
      }
 }
 
@@ -58,6 +62,8 @@ mod tests {
 
     #[test]
     fn using_builder_pattern() {
-        let _fractal = Fractal::<f64>::default().mandelbrot();
+        let fractal = Fractal::<f64>::default().mandelbrot().run_on(ExecutorKind::Rayon);
+
+        fractal.start();
     }
 }

@@ -30,7 +30,7 @@ pub struct Pipe {
 }
 
 
-pub enum ExecutorType {
+pub enum ExecutorKind {
     SingleThread,
     Rayon
 }
@@ -40,13 +40,13 @@ pub enum ExecutorType {
 /// img_rcv - for getting ready images of fractal
 /// cmd_send - for sending commands to the Executor, like change of PoI, etc.
 pub trait Executor {
-    fn execute(self) -> Pipe;
+    fn execute(&self) -> Pipe;
 }
 
 pub struct Rayon;
 
 impl Executor for Rayon {
-    fn execute(self) -> Pipe {
+    fn execute(&self) -> Pipe {
         let (img_send, img_rcv) = sync_channel(1);
 
         let (cmd_send, cmd_rcv) = channel();
