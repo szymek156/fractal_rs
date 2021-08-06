@@ -7,6 +7,39 @@ pub struct PoI<Floating> {
     pub pinhole_size: Floating,
     pub limit: u32,
 }
+
+
+// Enum approach:
+// - Still unused type parameter, 'phantom' data is hidden in Julia(T)
+// - It also has to be initialized: Julia(Floating::from(4.4))
+// but contrary to phantom - it takes place
+// - But phantom can be used so point above may be irrelevant 
+// - match inside draw method has to be there - dispatching done by hand
+// - no heap allocation
+pub enum FractalEnum<T> {
+    NotSet,
+    Julia(T),
+    Mandelbrot(T),
+}
+
+impl<T> FractalEnum<T>
+where
+    T: From<f64>,
+{
+    fn draw(&self) {
+        match self {
+            FractalEnum::NotSet => todo!(),
+            FractalEnum::Julia(_) => todo!(),
+            FractalEnum::Mandelbrot(_) => FractalEnum::<T>::mandelbrot(),
+        }
+    }
+
+    fn mandelbrot() {
+        let some_var = T::from(4.0);
+        todo!()
+    }
+}
+
 // #[derive(Debug)]
 pub struct Fractal<Floating> {
     pub img_width: u32,
@@ -15,6 +48,7 @@ pub struct Fractal<Floating> {
     pub pinhole_step: Floating,
     pub poi: PoI<Floating>,
     pub fractal_function: Box<dyn FractalFunction>,
+    pub fractal_enum: FractalEnum<Floating>,
 }
 
 impl<Floating> Default for Fractal<Floating>
@@ -35,6 +69,7 @@ where
             fractal_function: Box::new(Mandelbrot::<Floating> {
                 _marker: PhantomData,
             }),
+            fractal_enum: FractalEnum::NotSet,
         }
     }
 }
@@ -52,7 +87,10 @@ struct Mandelbrot<Floating> {
     _marker: PhantomData<Floating>,
 }
 
-impl<Floating> FractalFunction for Mandelbrot<Floating> where Floating: From<f64> {
+impl<Floating> FractalFunction for Mandelbrot<Floating>
+where
+    Floating: From<f64>,
+{
     fn draw(&self) {
         let sample = Floating::from(6.9);
         todo!();
@@ -65,7 +103,15 @@ where
     Floating: From<f64> + 'static,
 {
     pub fn mandelbrot(mut self) -> Self {
-        self.fractal_function = Box::new(Mandelbrot { _marker: PhantomData::<Floating> });
+        self.fractal_function = Box::new(Mandelbrot {
+            _marker: PhantomData::<Floating>,
+        });
+
+        self
+    }
+
+    pub fn mandelbrot_enum(mut self) -> Self {
+        self.fractal_enum = FractalEnum::Mandelbrot(Floating::from(6.9));
 
         self
     }
@@ -77,7 +123,9 @@ mod tests {
 
     #[test]
     fn create_fr() {
-        let m: Box<dyn FractalFunction> = Box::new(Mandelbrot::<f64>{_marker: PhantomData} );
+        let m: Box<dyn FractalFunction> = Box::new(Mandelbrot::<f64> {
+            _marker: PhantomData,
+        });
     }
     #[test]
     fn using_builder_pattern() {
