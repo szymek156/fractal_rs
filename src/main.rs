@@ -11,6 +11,8 @@ extern crate lazy_static;
 mod fractal;
 mod fractal_builder;
 mod opengl;
+mod executor;
+mod fractals;
 mod quadruple;
 mod soft_float;
 
@@ -56,7 +58,7 @@ fn main() {
         pinhole_size: 0.000000000000000038614262509059454,
         pinhole_step: 1.0,
         limit: 1200,
-    
+
     };
 
     // TODO: Interesting, artifacts on quadruple implementation

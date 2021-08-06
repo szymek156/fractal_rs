@@ -1,29 +1,18 @@
-use std::{marker::PhantomData, rc::Rc};
-
-
-trait Floating = From<f64> + Copy + 'static;
-
-#[derive(Debug, Default)]
-pub struct PoI<Floating> {
-    pub origin_x: Floating,
-    pub origin_y: Floating,
-    pub pinhole_size: Floating,
-    pub limit: u32,
-}
+use crate::{executor::{Executor, ExecutorType, Rayon}, fractals::{Floating, FractalFunction, Mandelbrot, PoI}};
+use std::marker::PhantomData;
 
 // #[derive(Debug)]
-pub struct Fractal<Floating> {
+pub struct Fractal<F: Floating> {
     pub img_width: u32,
     pub img_height: u32,
 
-    pub pinhole_step: Floating,
-    pub poi: PoI<Floating>,
-    pub fractal_function: Box<dyn FractalFunction>,
+    pub pinhole_step: F,
+    pub poi: PoI<F>,
+    fractal_function: Box<dyn FractalFunction<F>>,
+    executor: Box<dyn Executor>
 }
 
-impl<F : Floating> Default for Fractal<F>
-
-{
+impl<F: Floating> Default for Fractal<F> {
     fn default() -> Self {
         Fractal {
             img_height: 608,
@@ -35,46 +24,32 @@ impl<F : Floating> Default for Fractal<F>
                 pinhole_size: F::from(4.0),
                 limit: 300,
             },
-            fractal_function: Box::new(Mandelbrot::<F>{poi: None}),
+            fractal_function: Box::new(Mandelbrot::<F>(PhantomData)),
+            executor: Box::new(Rayon)
         }
     }
 }
 
-trait FractalFunction {
-    // &self to have safe object
-    fn draw(&self);
-}
-
-// Unused type parameters cause some internal compiler problems
-// that I do not understand, and they were made illegal long time
-// ago. _marker is zero sized type, that pretends usage of Floating,
-// making compiler happy.
-struct Mandelbrot<F: Floating> {
-    pub poi : Option<PoI<F>>
-}
-
-impl<F : Floating> FractalFunction for Mandelbrot<F>
-{
-    fn draw(&self) {
-        let poi = self.poi.as_ref().unwrap();
-        let sample = poi.origin_x; //+ Floating::from(2.0);
-
-        let sample = F::from(6.9);
-        todo!();
-    }
-}
-
-impl<F: Floating> Fractal<F>
-{
+impl<F: Floating> Fractal<F> {
     pub fn mandelbrot(mut self) -> Self {
-        
-        self.fractal_function = Box::new(Mandelbrot::<F>{poi: None});
+        self.fractal_function = Box::new(Mandelbrot::<F>(PhantomData));
 
         self
     }
 
-    
+    pub fn julia(mut self) -> Self {
+        todo!();
+    }
 
+    /// This time use enum, because... why not
+    pub fn run_on(mut self, executor: ExecutorType) -> Self {
+        match  executor {
+            ExecutorType::SingleThread => todo!(),
+            ExecutorType::Rayon => self.executor = Box::new(Rayon),
+        }
+
+        self
+     }
 }
 
 #[cfg(test)]
@@ -83,6 +58,6 @@ mod tests {
 
     #[test]
     fn using_builder_pattern() {
-        let fractal = Fractal::<f64>::default().mandelbrot();
+        let _fractal = Fractal::<f64>::default().mandelbrot();
     }
 }
