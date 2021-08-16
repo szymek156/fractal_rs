@@ -1,5 +1,4 @@
 use std::{
-    marker::PhantomData,
     sync::mpsc::{channel, sync_channel},
     thread,
     time::Instant,
@@ -13,7 +12,7 @@ use rayon::{
 // Thanks to exact picks, there are no circular references!!
 use crate::{
     fractal_builder::Context,
-    fractals::{Floating, FractalFunction, Mandelbrot},
+    fractals::{Floating, FractalFunction},
     pipe::Pipe,
 };
 
@@ -69,15 +68,15 @@ fn handle_command<F: Floating>(command: Command, context: &mut Context<F>) {
             }
         }
         Command::ChangeOrigin(x, y) => {
-            let pinhole_center = context.poi.pinhole_size / F::from(2.0);
+            let pinhole_center = context.poi.pinhole_size * F::from(0.5);
 
             context.poi.origin_x = context.poi.origin_x
-                + ((F::from(x) / F::from(context.img_width as f64)) * context.poi.pinhole_size)
+                + ((F::from(x) * F::from(1.0 / context.img_width as f64)) * context.poi.pinhole_size)
                 - pinhole_center;
 
             // * -1.0 because Y values increase in down direction
             context.poi.origin_y = context.poi.origin_y
-                + (((F::from(y) / F::from(context.img_height as f64)) * context.poi.pinhole_size)
+                + (((F::from(y) * F::from(1.0 / context.img_height as f64)) * context.poi.pinhole_size)
                     - pinhole_center)
                     * F::from(-1.0);
         }
@@ -133,7 +132,8 @@ fn handle_command<F: Floating>(command: Command, context: &mut Context<F>) {
         },
         Command::GetState => {
             println!("Current position: {:#?}", context.poi);
-            println!("Zoom: {:#?}", F::from(4.0) / context.poi.pinhole_size);
+            // TODO: implement div sometime eventually
+            // println!("Zoom: {:#?}", F::from(4.0) / context.poi.pinhole_size);
         }
     }
 }
@@ -163,8 +163,6 @@ impl<F: Floating> Executor<F> for Rayon {
 
             let chunk_size = pixels_count / num_threads;
 
-            let f = Mandelbrot::<F>(PhantomData);
-
             loop {
                 let start = Instant::now();
                 match cmd_rcv.try_recv() {
@@ -179,14 +177,7 @@ impl<F: Floating> Executor<F> for Rayon {
                     .par_chunks_mut(chunk_size)
                     .enumerate()
                     .map(|(id, chunk)| {
-                        // fractal.draw(
-                        //     &context,
-                        //     id as u32,
-                        //     context.img_height / num_threads as u32,
-                        //     chunk,
-                        // );
-
-                        f.draw(
+                        fractal.draw(
                             &context,
                             id as u32,
                             context.img_height / num_threads as u32,

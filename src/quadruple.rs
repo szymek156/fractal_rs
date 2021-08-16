@@ -9,7 +9,7 @@
 //! http://andrewthall.org/papers/df64_qf128.pdf
 
 use std::cmp::Ordering;
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 // For float p = 24, double p = 53 ((2 << 27) + 1).
 const SPLIT: f64 = ((2 << 27) + 1) as f64;
@@ -17,8 +17,8 @@ const SPLIT: f64 = ((2 << 27) + 1) as f64;
 // clone + copy to be able to do: x + x etc.
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct Quad {
-    lo: f64,
-    hi: f64,
+    pub lo: f64,
+    pub hi: f64,
 }
 
 // Variable naming taken from publication, don't judge me!
@@ -54,6 +54,12 @@ impl Add for Quad {
     }
 }
 
+impl AddAssign for Quad {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
 impl Sub for Quad {
     type Output = Self;
 
@@ -69,6 +75,12 @@ impl Sub for Quad {
         let c1 = t2 - (e - t1);
 
         Quad { lo: c1, hi: c0 }
+    }
+}
+
+impl SubAssign for Quad {
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
     }
 }
 
@@ -105,6 +117,11 @@ impl Mul for Quad {
     }
 }
 
+impl MulAssign for Quad {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs;
+    }
+}
 // TODO: Partial ordering:
 // https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html
 

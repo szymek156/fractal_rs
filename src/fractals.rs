@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     marker::PhantomData,
-    ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign},
+    ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
 };
 
 use image::Rgb;
@@ -9,7 +9,7 @@ use image::Rgb;
 use crate::fractal_builder::Context;
 
 /// Trait defining underlying floating type
-// Send to safely pass type over threads
+// Send and Sync to safely pass type over threads
 // TODO: maybe there is already numeric trait, which fulfills all those?
 // Mul<Output=Self> means, Type has to implement Mul, and result of this operation also needs to be Floating
 // Thats not always the case - see Rug implementation
@@ -18,7 +18,7 @@ pub trait Floating = From<f64>
     + 'static
     + MulAssign
     + Mul<Output = Self>
-    + Div<Output = Self>
+    // + Div<Output = Self>
     + Add<Output = Self>
     + AddAssign
     + Sub<Output = Self>
@@ -51,76 +51,16 @@ pub trait FractalFunction<F: Floating>: Send + Sync {
 // making compiler happy.
 pub struct Mandelbrot<F>(pub PhantomData<F>);
 
-impl<
-        F: From<f64>
-            + Copy
-            + MulAssign
-            + Mul<Output = F>
-            + Div<Output = F>
-            + Add<Output = F>
-            + AddAssign
-            + Sub<Output = F>
-            + SubAssign
-            + PartialOrd,
-    > Mandelbrot<F>
-{
-    pub fn draw_double(&self, context: &Context<F>, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
-        let imgx = context.img_width as f64;
-        let imgy = context.img_height as f64;
-        let pinhole_center = context.poi.pinhole_size / F::from(2.0);
-
-        let center_x = context.poi.origin_x - pinhole_center;
-        let center_y = context.poi.origin_y - pinhole_center;
-
-        let FOUR = F::from(4.0);
-
-        //TODO: range span?? calc min and max
-        for pixel_y in 0..height {
-            let y_offset = (pixel_y + id * height) as f64;
-            let y0 = F::from(y_offset / imgy) * context.poi.pinhole_size + center_y;
-
-            // TODO: this repeats every row, store value in an array?
-            for pixel_x in 0..context.img_width {
-                let x0 = F::from(pixel_x as f64 / imgx) * context.poi.pinhole_size + center_x;
-
-                let mut x = F::from(0.0);
-                let mut y = F::from(0.0);
-                let mut iteration = 0;
-
-                let mut x2 = F::from(0.0);
-                let mut y2 = F::from(0.0);
-                let mut sum = F::from(0.0);
-
-                while sum < FOUR && iteration < context.poi.limit {
-                    y = (x + x) * y + y0;
-
-                    x = x2 - y2 + x0;
-
-                    x2 = x * x;
-
-                    y2 = y * y;
-
-                    sum = x2 + y2;
-
-                    iteration += 1;
-                }
-
-                pixels[(pixel_y * context.img_height + pixel_x) as usize] =
-                    color_rainbow(iteration, context.poi.limit);
-            }
-        }
-    }
-}
 impl<F: Floating> FractalFunction<F> for Mandelbrot<F> {
     fn draw(&self, context: &Context<F>, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
         let imgx = context.img_width as f64;
         let imgy = context.img_height as f64;
-        let pinhole_center = context.poi.pinhole_size / F::from(2.0);
+        let pinhole_center = context.poi.pinhole_size * F::from(0.5);
 
         let center_x = context.poi.origin_x - pinhole_center;
         let center_y = context.poi.origin_y - pinhole_center;
 
-        let FOUR = F::from(4.0);
+        let four: F = F::from(4.0);
 
         //TODO: range span?? calc min and max
         for pixel_y in 0..height {
@@ -139,7 +79,7 @@ impl<F: Floating> FractalFunction<F> for Mandelbrot<F> {
                 let mut y2 = F::from(0.0);
                 let mut sum = F::from(0.0);
 
-                while sum < FOUR && iteration < context.poi.limit {
+                while sum < four && iteration < context.poi.limit {
                     y = (x + x) * y + y0;
 
                     x = x2 - y2 + x0;

@@ -1,5 +1,9 @@
-use crate::{executor::{Executor, ExecutorKind, Rayon}, fractals::{Floating, FractalFunction, Mandelbrot, PoI}, pipe::Pipe};
-use std::{marker::PhantomData};
+use crate::{
+    executor::{Executor, ExecutorKind, Rayon},
+    fractals::{Floating, FractalFunction, Mandelbrot, PoI},
+    pipe::Pipe,
+};
+use std::marker::PhantomData;
 
 #[derive(Debug)]
 pub struct Context<F> {
