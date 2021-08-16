@@ -1,8 +1,8 @@
-use crate::{executor::{self, Executor, ExecutorKind, Pipe, Rayon}, fractals::{Floating, FractalFunction, Mandelbrot, PoI}};
-use std::{borrow::Borrow, marker::PhantomData};
+use crate::{executor::{Executor, ExecutorKind, Rayon}, fractals::{Floating, FractalFunction, Mandelbrot, PoI}, pipe::Pipe};
+use std::{marker::PhantomData};
 
 #[derive(Debug)]
-pub struct Context<F: Floating> {
+pub struct Context<F> {
     pub img_width: u32,
     pub img_height: u32,
 
@@ -63,8 +63,7 @@ impl<F: Floating> Fractal<F> {
     }
 
     pub fn start(self) -> Pipe {
-        // TODO: add Rc? Or Arc?
-        self.executor.execute(self.context)
+        self.executor.execute(self.context, self.fractal_function)
     }
 }
 

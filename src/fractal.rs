@@ -1,5 +1,6 @@
 use image::{ImageBuffer, Rgb};
 use num_complex::Complex;
+use std::marker::PhantomData;
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread;
 use std::time::Instant;
@@ -10,7 +11,11 @@ use std::{
 };
 extern crate crossbeam;
 extern crate num_cpus;
+use crate::executor::{Command, FineDirection};
+use crate::fractal_builder::Context;
+use crate::fractals::{Mandelbrot, PoI, FractalFunction};
 use crate::main;
+use crate::pipe::{OutBuffer, Pipe};
 use crate::quadruple::{self, Quad};
 use crate::soft_float::SoftFloat;
 use crossbeam::thread::scope;
@@ -30,30 +35,7 @@ use std::sync::{Arc, Barrier, Mutex};
 ))]
 use std::arch::x86_64::*;
 
-pub type OutBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
-#[derive(Debug)]
 
-pub enum FineDirection {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-#[derive(Debug)]
-pub enum Command {
-    ZoomOut,
-    ZoomIn,
-    LessIterations,
-    MoreIterations,
-    FineTune(FineDirection),
-    ChangeOrigin(f64, f64),
-    SetPOI(u32),
-    GetState,
-}
-pub struct Pipe {
-    pub img_rcv: Receiver<OutBuffer>,
-    pub cmd_send: Sender<Command>,
-}
 #[derive(Debug, Clone)]
 pub struct Fractal {
     pub img_width: u32,
@@ -226,66 +208,42 @@ impl Fractal {
     pub fn mandelbrot_raw(&self, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
         let imgx = self.img_width;
         let imgy = self.img_height;
-        let pinhole_center = self.pinhole_size / 2.0;
+        let pinhole_center = self.pinhole_size / f64::from(2.0);
 
         let center_x = self.origin_x - pinhole_center;
         let center_y = self.origin_y - pinhole_center;
 
+        let FOUR =f64::from(4.0);
         //TODO: range span?? calc min and max
         for pixel_y in 0..height {
             let y_offset = pixel_y + id * height;
-            let y0 = (y_offset as f64 / imgy as f64) * self.pinhole_size + center_y;
+            let y0 = f64::from(y_offset as f64 / imgy as f64) * self.pinhole_size + center_y;
 
             // TODO: this repeats every row, store value in an array?
             for pixel_x in 0..self.img_width {
-                let x0 = (pixel_x as f64 / imgx as f64) * self.pinhole_size + center_x;
+                let x0 = f64::from(pixel_x as f64 / imgx as f64) * self.pinhole_size + center_x;
 
-                let mut x = 0.0;
-                let mut y = 0.0;
+                let mut x = f64::from(0.0);
+                let mut y = f64::from(0.0);
                 let mut iteration = 0;
 
-                let mut x2 = 0.0;
-                let mut y2 = 0.0;
-                let mut sum = 0.0;
+                let mut x2 = f64::from(0.0);
+                let mut y2 = f64::from(0.0);
+                let mut sum = f64::from(0.0);
 
-                let mut log = false;
-                if pixel_x == self.img_width / 2 && y_offset == self.img_height / 2 {
-                    println!("center: {} {}", pixel_x, y_offset);
-                    println!("x0, y0: {} {}", x0, y0);
-                    log = true;
-                }
 
-                while sum < 4.0 && iteration < self.limit {
-                    if log {
-                        println!("sum = {}", sum);
-                    }
+                while sum < FOUR && iteration < self.limit {
 
                     y = (x + x) * y + y0;
-                    if log {
-                        println!("y {}", y);
-                    }
 
                     x = x2 - y2 + x0;
-                    if log {
-                        println!("x {}", x);
-                    }
 
                     x2 = x * x;
-                    if log {
-                        println!("x2 {}", x2);
-                    }
 
                     y2 = y * y;
-                    if log {
-                        println!("y2 {}", y2);
-                    }
 
                     sum = x2 + y2;
-                    if log {
-                        println!("SUM {}", sum);
-                    }
 
-                    break;
                     iteration += 1;
                 }
 
@@ -892,6 +850,7 @@ impl Fractal {
 
             let chunk_size = pixels_count / num_threads;
 
+            let f = Mandelbrot::<f64>(PhantomData);
             loop {
                 let start = Instant::now();
                 match cmd_rcv.try_recv() {
@@ -902,15 +861,26 @@ impl Fractal {
                     Err(_) => (),
                 }
 
+                let context = Context{
+                    img_width: self.img_width,
+                    img_height: self.img_height,
+                    pinhole_step: self.pinhole_step,
+                    poi: PoI::<f64>{
+                        origin_x: self.origin_x,
+                        origin_y: self.origin_y,
+                        pinhole_size: self.pinhole_size,
+                        limit: self.limit,
+                    },
+                };
                 let _: Vec<_> = pixels
                     .par_chunks_mut(chunk_size)
                     .enumerate()
                     .map(|(id, chunk)| {
-                        self.mandelbrot_quad(
-                            id as u32,
-                            self.img_height / num_threads as u32,
-                            chunk,
-                        );
+                        // self.mandelbrot_quad(
+                        //     id as u32,
+                        //     self.img_height / num_threads as u32,
+                        //     chunk,
+                        // );
 
                         // self.mandelbrot_soft_float(
                         //     id as u32,
@@ -927,6 +897,8 @@ impl Fractal {
                         // );
                         // println!("!!!!!!!!!!!RAW!!!!!!!!!!!");
                         // self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
+
+                        f.draw_double(&context, id as u32, self.img_height / num_threads as u32, chunk)
                     })
                     .collect();
 

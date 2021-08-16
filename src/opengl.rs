@@ -1,4 +1,5 @@
-use crate::fractal::{Command, FineDirection, OutBuffer, Pipe};
+use crate::executor::{Command, FineDirection};
+use crate::pipe::{OutBuffer, Pipe};
 use glium::glutin::dpi::PhysicalPosition;
 use glium::glutin::event::{ElementState, MouseButton, VirtualKeyCode};
 use glium::index::NoIndices;
@@ -199,8 +200,7 @@ pub fn run(pipe: Pipe) {
             _ => return,
         }
 
-        let next_frame_time =
-            std::time::Instant::now() + std::time::Duration::from_nanos(50_000);
+        let next_frame_time = std::time::Instant::now() + std::time::Duration::from_nanos(50_000);
         *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
 
         if let Some(texture) = get_texture(&display, &pipe.img_rcv) {

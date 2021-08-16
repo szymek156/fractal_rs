@@ -1,4 +1,12 @@
-use std::{fmt::Debug, marker::PhantomData, ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign}};
+use std::{
+    fmt::Debug,
+    marker::PhantomData,
+    ops::{Add, AddAssign, Div, Mul, MulAssign, Sub, SubAssign},
+};
+
+use image::Rgb;
+
+use crate::fractal_builder::Context;
 
 /// Trait defining underlying floating type
 // Send to safely pass type over threads
@@ -15,7 +23,9 @@ pub trait Floating = From<f64>
     + AddAssign
     + Sub<Output = Self>
     + SubAssign
+    + PartialOrd
     + Send
+    + Sync
     + Debug;
 
 /// PoI - point of interest on a complex plane
@@ -28,22 +38,150 @@ pub struct PoI<Floating> {
 }
 
 /// Interface required for fractal to be implemented for drawing purposes
-pub trait FractalFunction<F: Floating> {
+/// Struct which implements this trait, are constrained to be Sync + Send,
+/// That impacts also F type.
+pub trait FractalFunction<F: Floating>: Send + Sync {
     // &self to have safe object
-    fn draw(&self, poi: &PoI<F>);
+    fn draw(&self, context: &Context<F>, id: u32, height: u32, pixels: &mut [Rgb<u8>]);
 }
 
 // Unused type parameters cause some internal compiler problems
 // that I do not understand, and they were made illegal long time
 // ago. _marker is zero sized type, that pretends usage of Floating,
 // making compiler happy.
-pub struct Mandelbrot<F: Floating>(pub PhantomData<F>);
+pub struct Mandelbrot<F>(pub PhantomData<F>);
 
-impl<F: Floating> FractalFunction<F> for Mandelbrot<F> {
-    fn draw(&self, poi: &PoI<F>) {
-        let _sample = poi.origin_x + F::from(2.0);
+impl<
+        F: From<f64>
+            + Copy
+            + MulAssign
+            + Mul<Output = F>
+            + Div<Output = F>
+            + Add<Output = F>
+            + AddAssign
+            + Sub<Output = F>
+            + SubAssign
+            + PartialOrd,
+    > Mandelbrot<F>
+{
+    pub fn draw_double(&self, context: &Context<F>, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
+        let imgx = context.img_width as f64;
+        let imgy = context.img_height as f64;
+        let pinhole_center = context.poi.pinhole_size / F::from(2.0);
 
-        let _sample = F::from(6.9);
-        todo!();
+        let center_x = context.poi.origin_x - pinhole_center;
+        let center_y = context.poi.origin_y - pinhole_center;
+
+        let FOUR = F::from(4.0);
+
+        //TODO: range span?? calc min and max
+        for pixel_y in 0..height {
+            let y_offset = (pixel_y + id * height) as f64;
+            let y0 = F::from(y_offset / imgy) * context.poi.pinhole_size + center_y;
+
+            // TODO: this repeats every row, store value in an array?
+            for pixel_x in 0..context.img_width {
+                let x0 = F::from(pixel_x as f64 / imgx) * context.poi.pinhole_size + center_x;
+
+                let mut x = F::from(0.0);
+                let mut y = F::from(0.0);
+                let mut iteration = 0;
+
+                let mut x2 = F::from(0.0);
+                let mut y2 = F::from(0.0);
+                let mut sum = F::from(0.0);
+
+                while sum < FOUR && iteration < context.poi.limit {
+                    y = (x + x) * y + y0;
+
+                    x = x2 - y2 + x0;
+
+                    x2 = x * x;
+
+                    y2 = y * y;
+
+                    sum = x2 + y2;
+
+                    iteration += 1;
+                }
+
+                pixels[(pixel_y * context.img_height + pixel_x) as usize] =
+                    color_rainbow(iteration, context.poi.limit);
+            }
+        }
     }
+}
+impl<F: Floating> FractalFunction<F> for Mandelbrot<F> {
+    fn draw(&self, context: &Context<F>, id: u32, height: u32, pixels: &mut [Rgb<u8>]) {
+        let imgx = context.img_width as f64;
+        let imgy = context.img_height as f64;
+        let pinhole_center = context.poi.pinhole_size / F::from(2.0);
+
+        let center_x = context.poi.origin_x - pinhole_center;
+        let center_y = context.poi.origin_y - pinhole_center;
+
+        let FOUR = F::from(4.0);
+
+        //TODO: range span?? calc min and max
+        for pixel_y in 0..height {
+            let y_offset = (pixel_y + id * height) as f64;
+            let y0 = F::from(y_offset / imgy) * context.poi.pinhole_size + center_y;
+
+            // TODO: this repeats every row, store value in an array?
+            for pixel_x in 0..context.img_width {
+                let x0 = F::from(pixel_x as f64 / imgx) * context.poi.pinhole_size + center_x;
+
+                let mut x = F::from(0.0);
+                let mut y = F::from(0.0);
+                let mut iteration = 0;
+
+                let mut x2 = F::from(0.0);
+                let mut y2 = F::from(0.0);
+                let mut sum = F::from(0.0);
+
+                while sum < FOUR && iteration < context.poi.limit {
+                    y = (x + x) * y + y0;
+
+                    x = x2 - y2 + x0;
+
+                    x2 = x * x;
+
+                    y2 = y * y;
+
+                    sum = x2 + y2;
+
+                    iteration += 1;
+                }
+
+                pixels[(pixel_y * context.img_height + pixel_x) as usize] =
+                    color_rainbow(iteration, context.poi.limit);
+            }
+        }
+    }
+}
+
+// TODO: extract to be a strategy
+fn color_rainbow(iteration: u32, limit: u32) -> image::Rgb<u8> {
+    // TODO: variable names are nonsense, refactor
+
+    let mut pixel = image::Rgb([0, 0, 0]);
+
+    if iteration < limit {
+        let mut h = iteration as f64 % 360.0;
+        h /= 60.0;
+        let i = h as usize;
+        let mut f = h - i as f64; // factorial part of h
+        let mut q = 1.0 - f;
+
+        f *= 255.0;
+        q *= 255.0;
+
+        let r_arr = [255, q as u8, 0, 0, f as u8, 255];
+        let g_arr = [f as u8, 255, 255, q as u8, 0, 0];
+        let b_arr = [0, 0, f as u8, 255, 255, q as u8];
+
+        pixel = image::Rgb([r_arr[i], g_arr[i], b_arr[i]])
+    }
+
+    pixel
 }
