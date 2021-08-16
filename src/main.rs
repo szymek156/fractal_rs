@@ -2,6 +2,8 @@
 #![feature(stdsimd)]
 // use fractal::Fractal;
 
+use quadruple::Quad;
+
 use crate::{executor::ExecutorKind, fractal_builder::Fractal, fractals::PoI};
 use crate::fractal::Fractal as OldFractal;
 
@@ -84,20 +86,20 @@ fn run_old() {
 }
 fn main() {
 
-    // run_old();
+    run_old();
     
     let mut fractal = Fractal::<f64>::default()
         .mandelbrot()
-        .with_poi(PoI::<f64> {
-            // origin_x: -1.275160031112145,
-            // origin_y: -0.19410769865119987,
-            // pinhole_size: 0.000000000000000038614262509059454,
-            // limit: 1200,
+        .with_poi(PoI { // Template type deduction!
+            origin_x: -1.275160031112145,
+            origin_y: -0.19410769865119987,
+            pinhole_size: 0.000000000000000038614262509059454,
+            limit: 1200,
 
-            origin_x: -0.7436438870371587,
-            origin_y: 0.13182590420531198,
-            pinhole_size: 0.0000000000004892965009859402,
-            limit: 3800,
+            // origin_x: -0.7436438870371587,
+            // origin_y: 0.13182590420531198,
+            // pinhole_size: 0.0000000000004892965009859402,
+            // limit: 3800,
         })
         .run_on(ExecutorKind::Rayon);
 

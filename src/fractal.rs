@@ -850,7 +850,6 @@ impl Fractal {
 
             let chunk_size = pixels_count / num_threads;
 
-            let f = Mandelbrot::<f64>(PhantomData);
             loop {
                 let start = Instant::now();
                 match cmd_rcv.try_recv() {
@@ -861,17 +860,7 @@ impl Fractal {
                     Err(_) => (),
                 }
 
-                let context = Context{
-                    img_width: self.img_width,
-                    img_height: self.img_height,
-                    pinhole_step: self.pinhole_step,
-                    poi: PoI::<f64>{
-                        origin_x: self.origin_x,
-                        origin_y: self.origin_y,
-                        pinhole_size: self.pinhole_size,
-                        limit: self.limit,
-                    },
-                };
+                
                 let _: Vec<_> = pixels
                     .par_chunks_mut(chunk_size)
                     .enumerate()
@@ -895,10 +884,9 @@ impl Fractal {
                         //     self.img_height / num_threads as u32,
                         //     chunk,
                         // );
-                        // println!("!!!!!!!!!!!RAW!!!!!!!!!!!");
-                        // self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
+                        
+                        self.mandelbrot_raw(id as u32, self.img_height / num_threads as u32, chunk);
 
-                        f.draw_double(&context, id as u32, self.img_height / num_threads as u32, chunk)
                     })
                     .collect();
 
