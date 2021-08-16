@@ -40,8 +40,8 @@ impl<F: Floating> Default for Fractal<F> {
 }
 
 impl<F: Floating> Fractal<F> {
-    pub fn mandelbrot(mut self) -> Self {
-        self.fractal_function = Box::new(Mandelbrot::<F>(PhantomData));
+    pub fn with(mut self, fractal: Box<dyn FractalFunction<F>>) -> Self {
+        self.fractal_function = fractal;
 
         self
     }
@@ -78,7 +78,7 @@ mod tests {
     #[test]
     fn using_builder_pattern() {
         let mut fractal = Fractal::<f64>::default()
-            .mandelbrot()
+            .with(Box::new(Mandelbrot::<f64>(PhantomData)))
             .with_poi(PoI::<f64> {
                 origin_x: -1.275160031112145,
                 origin_y: -0.19410769865119987,

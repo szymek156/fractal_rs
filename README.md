@@ -23,8 +23,8 @@ This is a port to Rust of my implementation of rendering a Mandelbrot set writte
 - [x] quadruple (double double) + Rayon:
 
 <img src="https://github.com/szymek156/fractal_rs/blob/master/images/double.png" alt="drawing" width="300"/> <img src="https://github.com/szymek156/fractal_rs/blob/master/images/double-double.png" alt="drawing" width="300"/>
+- [x] Use builder and strategy patterns to conveniently select fractal, point on a plane, floating arithmetic, and the executor.
 - [ ] arbitrary precision custom SoftFloat
-- [ ] refactor, because it starts to be a mess
 - [ ] arbitrary precision ramp
 - [ ] cuda?
 - [ ] try to improve rug execution?
@@ -32,7 +32,13 @@ This is a port to Rust of my implementation of rendering a Mandelbrot set writte
     - https://math.stackexchange.com/questions/939270/perturbation-of-mandelbrot-set-fractal
     - http://www.science.eclipse.co.uk/sft_maths.pdf  superfractaling maths K. I. Martin
     - https://mathr.co.uk/mandelbrot/perturbation.pdf
+    - http://math.ivanovo.ac.ru/dalgebra/Khashin/man2/Mandelbrot.pdf
 - [ ] Julia
 - [ ] create a video from the pass
 - [ ] adaptive float type selection on the fly
     - start with the floats, jump to doubles, then go to quads. Depending on the zoom magnitude.
+
+# Notes
+
+- https://www.officedaytime.com/simd512e/
+- https://nullprogram.com/blog/2015/07/10/

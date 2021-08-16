@@ -101,7 +101,7 @@ impl<F: Floating> FractalFunction<F> for Mandelbrot<F> {
 }
 
 // TODO: extract to be a strategy
-fn color_rainbow(iteration: u32, limit: u32) -> image::Rgb<u8> {
+pub fn color_rainbow(iteration: u32, limit: u32) -> image::Rgb<u8> {
     // TODO: variable names are nonsense, refactor
 
     let mut pixel = image::Rgb([0, 0, 0]);
