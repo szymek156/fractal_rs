@@ -37,6 +37,7 @@ This is a port to Rust of my implementation of rendering a Mandelbrot set writte
 - [ ] create a video from the pass
 - [ ] adaptive float type selection on the fly
     - start with the floats, jump to doubles, then go to quads. Depending on the zoom magnitude.
+- [ ] port to WASM
 
 # Notes
 
